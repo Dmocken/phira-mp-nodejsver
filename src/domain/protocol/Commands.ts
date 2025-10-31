@@ -96,7 +96,22 @@ export type ServerCommand =
       user?: UserInfo;
       room?: ClientRoomState;
     }
-  | { type: ServerCommandType.Chat; success: boolean; error?: string };
+  | { type: ServerCommandType.Chat; success: boolean; error?: string }
+  | { type: ServerCommandType.Message; message: string }
+  | { type: ServerCommandType.ChangeState; state: RoomState }
+  | { type: ServerCommandType.ChangeHost; newHostId: number }
+  | { type: ServerCommandType.CreateRoom; success: boolean; error?: string; room?: ClientRoomState }
+  | { type: ServerCommandType.JoinRoom; success: boolean; error?: string; room?: ClientRoomState }
+  | { type: ServerCommandType.OnJoinRoom; user: UserInfo }
+  | { type: ServerCommandType.LeaveRoom; userId: number }
+  | { type: ServerCommandType.LockRoom; locked: boolean }
+  | { type: ServerCommandType.CycleRoom; cycle: boolean }
+  | { type: ServerCommandType.SelectChart; chartId: number }
+  | { type: ServerCommandType.RequestStart }
+  | { type: ServerCommandType.Ready; userId: number }
+  | { type: ServerCommandType.CancelReady; userId: number }
+  | { type: ServerCommandType.Played; userId: number; chartId: number }
+  | { type: ServerCommandType.Abort };
 
 export interface ParsedClientCommand {
   rawType: number;
@@ -226,6 +241,77 @@ export class CommandParser {
           writer.bool(false);
           writer.string(command.error || 'Chat failed');
         }
+        break;
+
+      case ServerCommandType.Message:
+        writer.string(command.message);
+        break;
+
+      case ServerCommandType.ChangeState:
+        CommandParser.writeRoomState(writer, command.state);
+        break;
+
+      case ServerCommandType.ChangeHost:
+        writer.i32(command.newHostId);
+        break;
+
+      case ServerCommandType.CreateRoom:
+        if (command.success && command.room) {
+          writer.bool(true);
+          CommandParser.writeClientRoomState(writer, command.room);
+        } else {
+          writer.bool(false);
+          writer.string(command.error || 'Failed to create room');
+        }
+        break;
+
+      case ServerCommandType.JoinRoom:
+        if (command.success && command.room) {
+          writer.bool(true);
+          CommandParser.writeClientRoomState(writer, command.room);
+        } else {
+          writer.bool(false);
+          writer.string(command.error || 'Failed to join room');
+        }
+        break;
+
+      case ServerCommandType.OnJoinRoom:
+        CommandParser.writeUserInfo(writer, command.user);
+        break;
+
+      case ServerCommandType.LeaveRoom:
+        writer.i32(command.userId);
+        break;
+
+      case ServerCommandType.LockRoom:
+        writer.bool(command.locked);
+        break;
+
+      case ServerCommandType.CycleRoom:
+        writer.bool(command.cycle);
+        break;
+
+      case ServerCommandType.SelectChart:
+        writer.i32(command.chartId);
+        break;
+
+      case ServerCommandType.RequestStart:
+        break;
+
+      case ServerCommandType.Ready:
+        writer.i32(command.userId);
+        break;
+
+      case ServerCommandType.CancelReady:
+        writer.i32(command.userId);
+        break;
+
+      case ServerCommandType.Played:
+        writer.i32(command.userId);
+        writer.i32(command.chartId);
+        break;
+
+      case ServerCommandType.Abort:
         break;
 
       default:
