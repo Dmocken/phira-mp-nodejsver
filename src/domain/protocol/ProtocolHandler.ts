@@ -924,7 +924,9 @@ export class ProtocolHandler {
       return;
     }
 
-    if (!player.isReady) {
+    // Room owners can cancel regardless of their ready state
+    // This allows them to cancel the game even when not ready
+    if (room.ownerId !== session.userId && !player.isReady) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.CancelReady,
         result: { ok: false, error: 'not ready' },
