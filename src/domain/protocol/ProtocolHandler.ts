@@ -45,9 +45,9 @@ export class ProtocolHandler {
     };
 
     if (response.type === ServerCommandType.Pong) {
-      this.logger.debug('Response sent to client', logPayload);
+      this.logger.debug('已将请求发送给客户端：', logPayload);
     } else {
-      this.logger.info('Response sent to client', logPayload);
+      this.logger.debug('已将请求发送给客户端：', logPayload);
     }
   }
 
@@ -71,7 +71,7 @@ export class ProtocolHandler {
   }
 
   handleConnection(connectionId: string): void {
-    this.logger.info('Protocol connection established', {
+    this.logger.debug('建立协议连接：', {
       connectionId,
       totalRooms: this.roomManager.count(),
     });
@@ -95,7 +95,7 @@ export class ProtocolHandler {
         break;
 
       case ClientCommandType.Pong:
-        this.logger.debug('Heartbeat pong received', { connectionId });
+        this.logger.debug('收到心跳包 Pong', { connectionId });
         break;
 
       case ClientCommandType.Authenticate:
@@ -156,7 +156,7 @@ export class ProtocolHandler {
         break;
 
       default:
-        this.logger.warn('Unhandled command type', {
+        this.logger.warn('未知的指令类型：', {
           connectionId,
           messageType: ClientCommandType[message.type],
         });
@@ -169,24 +169,24 @@ export class ProtocolHandler {
     token: string,
     sendResponse: (response: ServerCommand) => void,
   ): void {
-    this.logger.info('Authentication attempt', { connectionId, tokenLength: token.length });
+    this.logger.debug('重复验证尝试：', { connectionId, tokenLength: token.length });
 
     if (this.sessions.has(connectionId)) {
-      this.logger.warn('Repeated authentication attempt', { connectionId });
+      this.logger.warn('重复验证尝试：', { connectionId });
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Authenticate,
         success: false,
-        error: 'Already authenticated',
+        error: '已经验证过了',
       });
       return;
     }
 
     if (token.length !== 32) {
-      this.logger.warn('Invalid token length', { connectionId, tokenLength: token.length });
+      this.logger.warn('非法的 Token 长度', { connectionId, tokenLength: token.length });
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Authenticate,
         success: false,
-        error: 'Invalid token length',
+        error: '非法的 Token 长度',
       });
       return;
     }
@@ -201,7 +201,7 @@ export class ProtocolHandler {
           connectionId,
         });
 
-        this.logger.info('Authentication successful', {
+        this.logger.debug('验证成功：', {
           connectionId,
           userId: userInfo.id,
           userName: userInfo.name,
@@ -215,7 +215,7 @@ export class ProtocolHandler {
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
-        this.logger.warn('Authentication failed', {
+        this.logger.warn('验证失败：', {
           connectionId,
           error: errorMessage,
         });
@@ -241,7 +241,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Chat,
         success: false,
-        error: 'Not authenticated',
+        error: '未验证',
       });
       return;
     }
@@ -251,7 +251,7 @@ export class ProtocolHandler {
       this.broadcastToRoom(room, { type: ServerCommandType.Message, message });
     }
 
-    this.logger.debug('Chat message received', {
+    this.logger.debug('收到聊天消息', {
       connectionId,
       userId: session.userId,
       message,
@@ -273,7 +273,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.CreateRoom,
         success: false,
-        error: 'Not authenticated',
+        error: '未验证',
       });
       return;
     }
@@ -283,7 +283,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.CreateRoom,
         success: false,
-        error: 'Already in a room',
+        error: '你已经在房间里了',
       });
       return;
     }
@@ -297,7 +297,7 @@ export class ProtocolHandler {
         connectionId,
       });
 
-      this.logger.info('Room created successfully', {
+      this.logger.info('房间创建成功：', {
         connectionId,
         userId: session.userId,
         roomId: room.id,
@@ -311,7 +311,7 @@ export class ProtocolHandler {
     } catch (error) {
       const errorMessage = (error as Error).message;
 
-      this.logger.error('Failed to create room', {
+      this.logger.error('创建房间失败：', {
         connectionId,
         userId: session.userId,
         roomId,
@@ -337,7 +337,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.JoinRoom,
         success: false,
-        error: 'Not authenticated',
+        error: '未验证',
       });
       return;
     }
@@ -347,7 +347,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.JoinRoom,
         success: false,
-        error: 'Already in a room',
+        error: '已经在房间里了',
       });
       return;
     }
@@ -357,7 +357,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.JoinRoom,
         success: false,
-        error: 'Room not found',
+        error: '找不到你想要的房间哦',
       });
       return;
     }
@@ -366,7 +366,7 @@ export class ProtocolHandler {
     const success = this.roomManager.addPlayerToRoom(roomId, session.userId, userInfo, connectionId);
 
     if (success) {
-      this.logger.info('Player joined room', {
+      this.logger.info('玩家加入房间：', {
         connectionId,
         userId: session.userId,
         roomId,
@@ -390,7 +390,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.JoinRoom,
         success: false,
-        error: 'Failed to join room',
+        error: '加入房间失败：',
       });
     }
   }
@@ -404,7 +404,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.LeaveRoom,
         success: false,
-        error: 'Not authenticated',
+        error: '未验证',
       });
       return;
     }
@@ -414,12 +414,12 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.LeaveRoom,
         success: false,
-        error: 'Not in a room',
+        error: '没在房间',
       });
       return;
     }
 
-    this.logger.info('Player leaving room', {
+    this.logger.info('玩家离开房间：', {
       connectionId,
       userId: session.userId,
       roomId: room.id,
@@ -449,7 +449,7 @@ export class ProtocolHandler {
             newHostId,
           });
 
-          this.logger.info('Room host transferred', {
+          this.logger.info('房主更换：', {
             roomId: updatedRoom.id,
             oldHostId: session.userId,
             newHostId,
@@ -465,7 +465,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.LeaveRoom,
         success: false,
-        error: 'Failed to leave room',
+        error: '离开房间失败',
       });
     }
   }
@@ -479,7 +479,7 @@ export class ProtocolHandler {
     if (!session) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Message,
-        message: 'Not authenticated',
+        message: '未验证',
       });
       return;
     }
@@ -488,13 +488,13 @@ export class ProtocolHandler {
     if (!room) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Message,
-        message: 'Not in a room',
+        message: '没在房间里面',
       });
       return;
     }
 
     if (!this.roomManager.isRoomOwner(room.id, session.userId)) {
-      this.logger.warn('Non-owner attempted to lock room', {
+      this.logger.warn('非房主试图锁房间：', {
         connectionId,
         userId: session.userId,
         roomId: room.id,
@@ -502,14 +502,14 @@ export class ProtocolHandler {
 
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Message,
-        message: 'Only room owner can lock or unlock the room',
+        message: '只有房主可以解锁/锁定房间',
       });
       return;
     }
 
     this.roomManager.setRoomLocked(room.id, lock);
 
-    this.logger.info('Room lock state updated', {
+    this.logger.info('已更新房间锁定状态：', {
       connectionId,
       userId: session.userId,
       roomId: room.id,
@@ -534,7 +534,7 @@ export class ProtocolHandler {
     if (!session) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Message,
-        message: 'Not authenticated',
+        message: '未验证',
       });
       return;
     }
@@ -543,13 +543,13 @@ export class ProtocolHandler {
     if (!room) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Message,
-        message: 'Not in a room',
+        message: '没在房间',
       });
       return;
     }
 
     if (!this.roomManager.isRoomOwner(room.id, session.userId)) {
-      this.logger.warn('Non-owner attempted to set cycle mode', {
+      this.logger.warn('非房主尝试切换房间循环状态', {
         connectionId,
         userId: session.userId,
         roomId: room.id,
@@ -557,14 +557,14 @@ export class ProtocolHandler {
 
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Message,
-        message: 'Only room owner can toggle cycle mode',
+        message: '非房主无法设置房间循环状态',
       });
       return;
     }
 
     this.roomManager.setRoomCycle(room.id, cycle);
 
-    this.logger.info('Room cycle mode updated', {
+    this.logger.info('房间循环状态已更新', {
       connectionId,
       userId: session.userId,
       roomId: room.id,
@@ -590,7 +590,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.SelectChart,
         success: false,
-        error: 'Not authenticated',
+        error: '未验证',
       });
       return;
     }
@@ -600,13 +600,13 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.SelectChart,
         success: false,
-        error: 'Not in a room',
+        error: '没在房间',
       });
       return;
     }
 
     if (!this.roomManager.isRoomOwner(room.id, session.userId)) {
-      this.logger.warn('Non-owner attempted to select chart', {
+      this.logger.warn('非房主尝试选择谱面：', {
         connectionId,
         userId: session.userId,
         roomId: room.id,
@@ -614,7 +614,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.SelectChart,
         success: false,
-        error: 'Only room owner can select chart',
+        error: '只有房主可以选择谱面',
       });
       return;
     }
@@ -627,7 +627,7 @@ export class ProtocolHandler {
       this.roomManager.setRoomChart(room.id, chartInfo);
       this.roomManager.setRoomState(room.id, { state: 'SelectChart', chartId });
 
-      this.logger.info('Chart selected successfully', {
+      this.logger.info('选择谱面成功：', {
         connectionId,
         userId: session.userId,
         roomId: room.id,
@@ -648,7 +648,7 @@ export class ProtocolHandler {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to select chart';
-      this.logger.error('Failed to select chart', {
+      this.logger.error('选择谱面失败：', {
         connectionId,
         userId: session.userId,
         roomId: room.id,
@@ -673,7 +673,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.RequestStart,
         success: false,
-        error: 'Not authenticated',
+        error: '未验证',
       });
       return;
     }
@@ -683,13 +683,13 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.RequestStart,
         success: false,
-        error: 'Not in a room',
+        error: '没在房间',
       });
       return;
     }
 
     if (!this.roomManager.isRoomOwner(room.id, session.userId)) {
-      this.logger.warn('Non-owner attempted to start game', {
+      this.logger.warn('非房主尝试开始游戏', {
         connectionId,
         userId: session.userId,
         roomId: room.id,
@@ -697,7 +697,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.RequestStart,
         success: false,
-        error: 'Only room owner can start game',
+        error: '只有房主可以开始游戏',
       });
       return;
     }
@@ -707,7 +707,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.RequestStart,
         success: false,
-        error: 'No chart selected',
+        error: '未选定谱面',
       });
       return;
     }
@@ -731,7 +731,7 @@ export class ProtocolHandler {
     if (!session) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Message,
-        message: 'Not authenticated',
+        message: '未验证',
       });
       return;
     }
@@ -740,7 +740,7 @@ export class ProtocolHandler {
     if (!room) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Message,
-        message: 'Not in a room',
+        message: '没在房间',
       });
       return;
     }
@@ -773,7 +773,7 @@ export class ProtocolHandler {
     if (!session) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Message,
-        message: 'Not authenticated',
+        message: '未验证',
       });
       return;
     }
@@ -782,7 +782,7 @@ export class ProtocolHandler {
     if (!room) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Message,
-        message: 'Not in a room',
+        message: '没在房间',
       });
       return;
     }
@@ -807,7 +807,7 @@ export class ProtocolHandler {
     if (!session) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Message,
-        message: 'Not authenticated',
+        message: '未验证',
       });
       return;
     }
@@ -816,7 +816,7 @@ export class ProtocolHandler {
     if (!room) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Message,
-        message: 'Not in a room',
+        message: '没在房间',
       });
       return;
     }
@@ -839,7 +839,7 @@ export class ProtocolHandler {
     if (!session) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Message,
-        message: 'Not authenticated',
+        message: '未验证',
       });
       return;
     }
@@ -848,7 +848,7 @@ export class ProtocolHandler {
     if (!room) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Message,
-        message: 'Not in a room',
+        message: '没在房间',
       });
       return;
     }
@@ -916,6 +916,6 @@ export class ProtocolHandler {
     this.broadcastCallbacks.delete(connectionId);
     this.roomManager.cleanupEmptyRooms();
 
-    this.logger.info('Protocol connection closed', { connectionId });
+    this.logger.info('连接关闭：', { connectionId });
   }
 }
