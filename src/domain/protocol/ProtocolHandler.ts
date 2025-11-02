@@ -608,7 +608,7 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.info(`${session.userId}房间 ${room.id} 循环状态切换为 ${true}`);
+    this.logger.info(`${session.userId} 将房间 ${room.id} 循环状态切换为 ${true}`);
 
     this.roomManager.setRoomCycle(room.id, cycle);
 
@@ -748,7 +748,7 @@ export class ProtocolHandler {
     if (room.state.type !== 'SelectChart') {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.RequestStart,
-        result: { ok: false, error: 'invalid state' },
+        result: { ok: false, error: '非法的状态' },
       });
       return;
     }
@@ -764,7 +764,7 @@ export class ProtocolHandler {
     if (!room.selectedChart) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.RequestStart,
-        result: { ok: false, error: 'no chart selected' },
+        result: { ok: false, error: '杂鱼~你还没选谱面呢' },
       });
       return;
     }
@@ -855,8 +855,10 @@ export class ProtocolHandler {
       user: session.userId,
     });
 
-    // Check if all players are ready
-    const allReady = Array.from(room.players.values()).every((p) => p.isReady);
+    // Check if all non-host players are ready
+    const allReady = Array.from(room.players.values())
+      .filter((p) => p.user.id !== room.ownerId)
+      .every((p) => p.isReady);
     if (allReady) {
       this.logger.debug('所有玩家已准备，开始游戏：', { roomId: room.id });
       this.roomManager.setRoomState(room.id, { type: 'Playing' });
@@ -988,7 +990,7 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.info('Player finished playing', {
+    this.logger.info('玩家游玩结束：', {
       connectionId,
       userId: session.userId,
       roomId: room.id,
