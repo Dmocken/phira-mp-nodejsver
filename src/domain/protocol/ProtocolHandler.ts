@@ -297,7 +297,7 @@ export class ProtocolHandler {
         connectionId,
       });
 
-      this.logger.info('房间创建成功：', {
+      this.logger.debug('房间创建成功：', {
         connectionId,
         userId: session.userId,
         roomId: room.id,
@@ -357,7 +357,7 @@ export class ProtocolHandler {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.JoinRoom,
         success: false,
-        error: '找不到你想要的房间哦',
+        error: '找不到你想要的房间喵qwq',
       });
       return;
     }
@@ -509,12 +509,7 @@ export class ProtocolHandler {
 
     this.roomManager.setRoomLocked(room.id, lock);
 
-    this.logger.info('已更新房间锁定状态：', {
-      connectionId,
-      userId: session.userId,
-      roomId: room.id,
-      locked: lock,
-    });
+    this.logger.info(`${session.userId} 已更新房间 "${room.id}" 锁定状态为 ${lock}`);
 
     const response: ServerCommand = {
       type: ServerCommandType.LockRoom,

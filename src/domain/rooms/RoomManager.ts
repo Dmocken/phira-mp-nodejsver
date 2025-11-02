@@ -74,7 +74,7 @@ export class InMemoryRoomManager implements RoomManager {
     const { id, name, ownerId, ownerInfo, connectionId, maxPlayers = 8, password } = options;
 
     if (this.rooms.has(id)) {
-      throw new Error(`Room with id ${id} already exists`);
+      throw new Error(`房间 ${id} 已存在`);
     }
 
     const players = new Map<number, PlayerInfo>();
@@ -112,7 +112,7 @@ export class InMemoryRoomManager implements RoomManager {
     const deleted = this.rooms.delete(id);
 
     if (deleted) {
-      this.logger.info('删除房间：', { id, totalRooms: this.rooms.size });
+      this.logger.info(`删除房间：${id}`);
     }
 
     return deleted;
@@ -166,7 +166,7 @@ export class InMemoryRoomManager implements RoomManager {
 
     const removed = room.players.delete(userId);
     if (removed) {
-      this.logger.info('从房间移除玩家：', { roomId, userId, playerCount: room.players.size });
+      this.logger.info(`从房间 ${roomId}移除玩家${userId}`);
 
       if (room.players.size === 0) {
         this.deleteRoom(roomId);

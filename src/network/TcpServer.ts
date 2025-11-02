@@ -97,7 +97,7 @@ export class TcpServer {
 
     this.connections.set(connectionId, state);
 
-    this.logger.info('建立TCP连接：', {
+    this.logger.debug('建立TCP连接：', {
       connectionId,
       remoteAddress: socket.remoteAddress,
       remotePort: socket.remotePort,
@@ -144,7 +144,7 @@ export class TcpServer {
       this.clearHeartbeat(state);
       this.connections.delete(connectionId);
       this.protocolHandler.handleDisconnection(connectionId);
-      this.logger.info('TCP 连接被关闭：', { connectionId });
+      this.logger.debug('TCP 连接被关闭：', { connectionId });
     });
 
     socket.on('error', (error) => {
