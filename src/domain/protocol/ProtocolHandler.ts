@@ -703,7 +703,12 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.info(`${session.userId} 将房间 ${room.id} 循环状态切换为 ${true}`);
+    this.logger.info(`${session.userId} 将房间 ${room.id} 循环状态切换为 ${cycle}`, {
+      connectionId,
+      userId: session.userId,
+      roomId: room.id,
+      cycle,
+    });
 
     this.roomManager.setRoomCycle(room.id, cycle);
 
@@ -1340,19 +1345,50 @@ export class ProtocolHandler {
 
     this.broadcastMessage(room, { type: 'GameEnd' });
 
-    this.roomManager.setRoomState(room.id, {
-      type: 'SelectChart',
-      chartId: room.selectedChart?.id ?? null,
-    });
-
-    for (const playerInfo of room.players.values()) {
-      playerInfo.isReady = false;
-      playerInfo.isFinished = false;
-      playerInfo.score = null;
+    // 根据循环模式决定游戏结束后的行为
+    if (room.cycle) {
+      // 循环模式：保留谱面，只重置玩家状态
+      this.logger.info('Loop mode enabled, resetting for next round', {
+        roomId: room.id,
+      });
+      
+      this.roomManager.setRoomState(room.id, {
+        type: 'WaitingForReady',
+      });
+      
+      // 重置玩家状态但保留谱面
+      for (const playerInfo of room.players.values()) {
+        playerInfo.isReady = false;
+        playerInfo.isFinished = false;
+        playerInfo.score = null;
+      }
+      
+      // 保留 room.selectedChart 以便直接开始下一局
+    } else {
+      // 非循环模式：完全重置，清除谱面
+      this.logger.info('Normal mode, full reset', {
+        roomId: room.id,
+      });
+      
+      this.roomManager.setRoomState(room.id, {
+        type: 'SelectChart',
+        chartId: null,  // 清除谱面
+      });
+      
+      // 清除谱面
+      this.roomManager.setRoomChart(room.id, undefined);
+      
+      // 重置所有玩家状态
+      for (const playerInfo of room.players.values()) {
+        playerInfo.isReady = false;
+        playerInfo.isFinished = false;
+        playerInfo.score = null;
+      }
     }
 
-    this.logger.info('Game ended, room reset to waiting', {
+    this.logger.info('Game ended, room reset completed', {
       roomId: room.id,
+      cycle: room.cycle,
       rankings: rankings.map((entry) => ({
         rank: entry.rank,
         userId: entry.userId,
