@@ -12,6 +12,8 @@ export interface PlayerInfo {
   isReady: boolean;
   isFinished: boolean;
   score: PlayerScore | null;
+  isConnected: boolean;
+  disconnectTime?: number;
 }
 
 export interface ChartInfo {
@@ -86,6 +88,7 @@ export class InMemoryRoomManager implements RoomManager {
       isReady: false,
       isFinished: false,
       score: null,
+      isConnected: true,
     });
 
     const room: Room = {
@@ -158,6 +161,7 @@ export class InMemoryRoomManager implements RoomManager {
       isReady: false,
       isFinished: false,
       score: null,
+      isConnected: true,
     });
 
     this.logger.debug('已添加玩家到房间：', { roomId, userId, playerCount: room.players.size });

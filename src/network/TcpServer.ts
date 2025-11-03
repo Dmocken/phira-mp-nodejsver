@@ -107,7 +107,7 @@ export class TcpServer {
       remotePort: socket.remotePort,
     });
 
-    this.protocolHandler.handleConnection(connectionId);
+    this.protocolHandler.handleConnection(connectionId, () => this.forceCloseConnection(connectionId));
     this.startTimeoutMonitor(connectionId, state);
 
     socket.on('data', (data: Buffer) => {
@@ -332,6 +332,15 @@ export class TcpServer {
     }
 
     return Buffer.from(bytes);
+  }
+
+  private forceCloseConnection(connectionId: string): void {
+    const state = this.connections.get(connectionId);
+    if (state && !state.socket.destroyed) {
+      this.logger.info('强制关闭连接：', { connectionId });
+      this.clearTimeoutMonitor(state);
+      state.socket.destroy();
+    }
   }
 
   private generateConnectionId(): string {
