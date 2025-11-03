@@ -352,4 +352,106 @@ describe('Game result flow', () => {
     expect(ownerCallTypes).toContain(ServerCommandType.GameEnded);
     expect(ownerCallTypes).toContain(ServerCommandType.ChangeState);
   });
+
+  it('should rotate host in cycle mode after game ends', () => {
+    const ownerConnection = 'conn-owner';
+    const guestConnection = 'conn-guest';
+    const ownerId = 1;
+    const guestId = 2;
+    const roomId = 'room-1';
+
+    // Seed sessions
+    (protocolHandler as any).sessions.set(ownerConnection, {
+      userId: ownerId,
+      userInfo: { id: ownerId, name: 'Owner', monitor: false },
+      connectionId: ownerConnection,
+    });
+
+    (protocolHandler as any).sessions.set(guestConnection, {
+      userId: guestId,
+      userInfo: { id: guestId, name: 'Guest', monitor: false },
+      connectionId: guestConnection,
+    });
+
+    // Create room and populate players
+    roomManager.createRoom({
+      id: roomId,
+      name: roomId,
+      ownerId,
+      ownerInfo: { id: ownerId, name: 'Owner', monitor: false },
+      connectionId: ownerConnection,
+    });
+
+    roomManager.addPlayerToRoom(roomId, guestId, { id: guestId, name: 'Guest', monitor: false }, guestConnection);
+
+    const room = roomManager.getRoom(roomId);
+    expect(room).not.toBeUndefined();
+    if (!room) {
+      throw new Error('Room not created');
+    }
+
+    // 开启循环模式
+    roomManager.setRoomCycle(roomId, true);
+    room.selectedChart = { id: 42, name: 'Test Chart' };
+    roomManager.setRoomState(roomId, { type: 'Playing' });
+
+    // Register broadcast callbacks
+    (protocolHandler as any).broadcastCallbacks.set(ownerConnection, mockSendResponseOwner);
+    (protocolHandler as any).broadcastCallbacks.set(guestConnection, mockSendResponseGuest);
+
+    // 验证初始房主是 owner
+    expect(room.ownerId).toBe(ownerId);
+
+    // Owner submits result
+    protocolHandler.handleMessage(
+      ownerConnection,
+      {
+        type: ClientCommandType.GameResult,
+        score: 1_000_000,
+        accuracy: 99.5,
+        perfect: 500,
+        good: 20,
+        bad: 0,
+        miss: 0,
+        maxCombo: 600,
+      },
+      mockSendResponseOwner,
+    );
+
+    // Guest submits result, triggering game end
+    protocolHandler.handleMessage(
+      guestConnection,
+      {
+        type: ClientCommandType.GameResult,
+        score: 750_000,
+        accuracy: 95.2,
+        perfect: 420,
+        good: 60,
+        bad: 10,
+        miss: 8,
+        maxCombo: 450,
+      },
+      mockSendResponseGuest,
+    );
+
+    // 循环模式：房主应该轮换到 guest
+    expect(room.ownerId).toBe(guestId);
+    expect(room.state.type).toBe('WaitingForReady');
+    expect(room.selectedChart).toEqual({ id: 42, name: 'Test Chart' }); // 谱面应该保留
+
+    // 验证 ChangeHost 消息被发送
+    const guestCallTypes = mockSendResponseGuest.mock.calls.map((call) => call[0].type);
+    expect(guestCallTypes).toContain(ServerCommandType.ChangeHost);
+
+    // 验证 NewHost 消息被广播
+    const guestMessages = mockSendResponseGuest.mock.calls
+      .filter((call) => call[0].type === ServerCommandType.Message)
+      .map((call) => call[0].message);
+    expect(guestMessages).toContainEqual(
+      expect.objectContaining({
+        type: 'NewHost',
+        user: guestId,
+      }),
+    );
+  });
 });

@@ -1351,10 +1351,51 @@ export class ProtocolHandler {
     const oldState = room.state.type;
 
     if (room.cycle) {
-      this.logger.info('[结束游戏] 循环模式已开启，保留谱面', {
+      this.logger.info('[结束游戏] 循环模式已开启，轮换房主并保留谱面', {
         roomId: room.id,
         chartId: room.selectedChart?.id ?? null,
+        currentOwnerId: room.ownerId,
       });
+      
+      // 轮换房主到下一个玩家
+      const playerIds = Array.from(room.players.keys()).filter((id) => {
+        const player = room.players.get(id);
+        return player && !player.user.monitor;
+      });
+      
+      if (playerIds.length > 1) {
+        const currentOwnerIndex = playerIds.indexOf(room.ownerId);
+        const nextOwnerIndex = (currentOwnerIndex + 1) % playerIds.length;
+        const newOwnerId = playerIds[nextOwnerIndex];
+        
+        const oldOwnerId = room.ownerId;
+        this.roomManager.changeRoomOwner(room.id, newOwnerId);
+        
+        this.logger.info('[房主轮换]', {
+          roomId: room.id,
+          oldOwnerId,
+          newOwnerId,
+        });
+        
+        // 广播房主变更消息
+        this.broadcastToRoom(room, {
+          type: ServerCommandType.ChangeHost,
+          isHost: false,
+        });
+        
+        const newOwnerCallback = this.broadcastCallbacks.get(room.players.get(newOwnerId)?.connectionId ?? '');
+        if (newOwnerCallback) {
+          newOwnerCallback({
+            type: ServerCommandType.ChangeHost,
+            isHost: true,
+          });
+        }
+        
+        this.broadcastMessage(room, {
+          type: 'NewHost',
+          user: newOwnerId,
+        });
+      }
       
       this.roomManager.setRoomState(room.id, {
         type: 'WaitingForReady',
