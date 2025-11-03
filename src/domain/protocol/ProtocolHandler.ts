@@ -139,6 +139,12 @@ export class ProtocolHandler {
         if (wasPlaying) {
           const player = room.players.get(session.userId);
           if (player && !player.isFinished) {
+            this.logger.info('[断线] 玩家游戏中断线', {
+              connectionId,
+              userId: session.userId,
+              roomId: room.id,
+            });
+
             player.isFinished = true;
             player.score = {
               score: 0,
@@ -151,7 +157,7 @@ export class ProtocolHandler {
               finishTime: Date.now(),
             };
             
-            this.logger.debug('玩家游戏中断线，标记为放弃：', {
+            this.logger.info('[断线] 玩家标记为放弃', {
               connectionId,
               userId: session.userId,
               roomId: room.id,
@@ -1179,12 +1185,19 @@ export class ProtocolHandler {
     player.score = playerScore;
     player.isFinished = true;
 
-    this.logger.info('玩家结束游戏', {
+    const finishedPlayers = Array.from(room.players.values()).filter(
+      (p) => !p.user.monitor && p.isFinished
+    );
+    const activePlayers = Array.from(room.players.values()).filter((p) => !p.user.monitor);
+
+    this.logger.info('[游戏结果] 已收到', {
       connectionId,
       roomId: room.id,
       userId: session.userId,
       score: playerScore.score,
       accuracy: playerScore.accuracy,
+      finishedCount: finishedPlayers.length,
+      totalPlayers: activePlayers.length,
     });
 
     const fullCombo = message.miss === 0 && message.bad === 0;
@@ -1259,17 +1272,26 @@ export class ProtocolHandler {
     }
 
     const activePlayers = Array.from(room.players.values()).filter((playerInfo) => !playerInfo.user.monitor);
+    const finishedPlayers = activePlayers.filter((playerInfo) => playerInfo.isFinished);
+    const allFinished = finishedPlayers.length === activePlayers.length;
+
+    this.logger.info('[检查结束] 正在评估', {
+      roomId: room.id,
+      onlinePlayers: activePlayers.length,
+      finishedPlayers: finishedPlayers.length,
+      allFinished,
+    });
+
     if (activePlayers.length === 0) {
-      this.logger.info('没有活跃玩家，游戏结束', {
+      this.logger.info('[检查结束] 没有活跃玩家，结束游戏', {
         roomId: room.id,
       });
       this.endGame(room);
       return;
     }
 
-    const finishedPlayers = activePlayers.filter((playerInfo) => playerInfo.isFinished);
-    if (finishedPlayers.length !== activePlayers.length) {
-      this.logger.debug('等待更多玩家完成游戏', {
+    if (!allFinished) {
+      this.logger.debug('[检查结束] 等待更多玩家完成', {
         roomId: room.id,
         finished: finishedPlayers.length,
         total: activePlayers.length,
@@ -1277,7 +1299,7 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.info('所有玩家都结束了游戏', {
+    this.logger.info('[检查结束] 所有玩家已完成', {
       roomId: room.id,
       playerCount: activePlayers.length,
     });
@@ -1287,12 +1309,19 @@ export class ProtocolHandler {
 
   private endGame(room: Room): void {
     if (room.state.type !== 'Playing') {
-      this.logger.debug('结束游戏调用，但房间不在游玩中状态', {
+      this.logger.debug('[结束游戏] 调用但房间不在游戏中状态', {
         roomId: room.id,
-        state: room.state.type,
+        currentState: room.state.type,
       });
       return;
     }
+
+    this.logger.info('[结束游戏] 开始', {
+      roomId: room.id,
+      currentStatus: room.state.type,
+      playerCount: room.players.size,
+      cycle: room.cycle,
+    });
 
     const endedAt = Date.now();
     const activePlayers = Array.from(room.players.values()).filter((playerInfo) => !playerInfo.user.monitor);
@@ -1319,11 +1348,63 @@ export class ProtocolHandler {
 
     this.broadcastMessage(room, { type: 'GameEnd' });
 
+    const oldState = room.state.type;
+
     if (room.cycle) {
-      this.logger.info(`房间 ${room.id} 循环模式已开启`);
+      this.logger.info('[结束游戏] 循环模式已开启，轮换房主并保留谱面', {
+        roomId: room.id,
+        chartId: room.selectedChart?.id ?? null,
+        currentOwnerId: room.ownerId,
+      });
+      
+      // 轮换房主到下一个玩家
+      const playerIds = Array.from(room.players.keys()).filter((id) => {
+        const player = room.players.get(id);
+        return player && !player.user.monitor;
+      });
+      
+      if (playerIds.length > 1) {
+        const currentOwnerIndex = playerIds.indexOf(room.ownerId);
+        const nextOwnerIndex = (currentOwnerIndex + 1) % playerIds.length;
+        const newOwnerId = playerIds[nextOwnerIndex];
+        
+        const oldOwnerId = room.ownerId;
+        this.roomManager.changeRoomOwner(room.id, newOwnerId);
+        
+        this.logger.info('[房主轮换]', {
+          roomId: room.id,
+          oldOwnerId,
+          newOwnerId,
+        });
+        
+        // 广播房主变更消息
+        this.broadcastToRoom(room, {
+          type: ServerCommandType.ChangeHost,
+          isHost: false,
+        });
+        
+        const newOwnerCallback = this.broadcastCallbacks.get(room.players.get(newOwnerId)?.connectionId ?? '');
+        if (newOwnerCallback) {
+          newOwnerCallback({
+            type: ServerCommandType.ChangeHost,
+            isHost: true,
+          });
+        }
+        
+        this.broadcastMessage(room, {
+          type: 'NewHost',
+          user: newOwnerId,
+        });
+      }
       
       this.roomManager.setRoomState(room.id, {
         type: 'WaitingForReady',
+      });
+      
+      this.logger.info('[状态变更]', {
+        roomId: room.id,
+        from: oldState,
+        to: 'WaitingForReady',
       });
       
       for (const playerInfo of room.players.values()) {
@@ -1333,13 +1414,19 @@ export class ProtocolHandler {
       }
       
     } else {
-      this.logger.info('普通模式', {
+      this.logger.info('[结束游戏] 普通模式，清除谱面', {
         roomId: room.id,
       });
       
       this.roomManager.setRoomState(room.id, {
         type: 'SelectChart',
         chartId: null,
+      });
+      
+      this.logger.info('[状态变更]', {
+        roomId: room.id,
+        from: oldState,
+        to: 'SelectChart',
       });
       
       this.roomManager.setRoomChart(room.id, undefined);
@@ -1351,8 +1438,10 @@ export class ProtocolHandler {
       }
     }
 
-    this.logger.info('游戏结束，房间已重置', {
+    this.logger.info('[结束游戏] 完成', {
       roomId: room.id,
+      newStatus: room.state.type,
+      hasChart: room.selectedChart !== undefined,
       cycle: room.cycle,
       rankings: rankings.map((entry) => ({
         rank: entry.rank,
@@ -1365,6 +1454,12 @@ export class ProtocolHandler {
   }
 
   private broadcastRoomUpdate(room: Room): void {
+    this.logger.info('[广播] 房间更新', {
+      roomId: room.id,
+      status: room.state.type,
+      recipientCount: room.players.size,
+    });
+
     this.broadcastToRoom(room, {
       type: ServerCommandType.ChangeState,
       state: room.state,
