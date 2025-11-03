@@ -151,7 +151,7 @@ export class ProtocolHandler {
               finishTime: Date.now(),
             };
             
-            this.logger.info('玩家游戏中断线，标记为放弃：', {
+            this.logger.debug('玩家游戏中断线，标记为放弃：', {
               connectionId,
               userId: session.userId,
               roomId: room.id,
@@ -1078,7 +1078,7 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.info('玩家游玩结束：', {
+    this.logger.debug('玩家游玩结束：', {
       connectionId,
       userId: session.userId,
       roomId: room.id,
@@ -1236,7 +1236,7 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.info('玩家流产？（我也看不懂什么意思', {
+    this.logger.debug('玩家放弃了游戏：', {
       connectionId,
       userId: session.userId,
       roomId: room.id,
