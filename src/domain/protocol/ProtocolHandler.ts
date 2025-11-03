@@ -31,6 +31,8 @@ interface UserSession {
 export class ProtocolHandler {
   private readonly sessions = new Map<string, UserSession>();
   private readonly broadcastCallbacks = new Map<string, (response: ServerCommand) => void>();
+  private readonly userConnections = new Map<number, string>();
+  private readonly connectionClosers = new Map<string, () => void>();
 
   constructor(
     private readonly roomManager: RoomManager,
@@ -117,27 +119,76 @@ export class ProtocolHandler {
     };
   }
 
-  handleConnection(connectionId: string): void {
+  handleConnection(connectionId: string, closeConnection?: () => void): void {
     this.logger.debug('建立协议连接：', {
       connectionId,
       totalRooms: this.roomManager.count(),
     });
+    
+    if (closeConnection) {
+      this.connectionClosers.set(connectionId, closeConnection);
+    }
   }
 
   handleDisconnection(connectionId: string): void {
+    this.connectionClosers.delete(connectionId);
+
     const session = this.sessions.get(connectionId);
     if (session) {
       const room = this.roomManager.getRoomByUserId(session.userId);
       if (room) {
         const roomId = room.id;
         const wasPlaying = room.state.type === 'Playing';
+        
+        if (wasPlaying) {
+          const player = room.players.get(session.userId);
+          if (player && !player.isFinished) {
+            player.isFinished = true;
+            player.score = {
+              score: 0,
+              accuracy: 0,
+              perfect: 0,
+              good: 0,
+              bad: 0,
+              miss: 0,
+              maxCombo: 0,
+              finishTime: Date.now(),
+            };
+            
+            this.logger.info('玩家游戏中断线，标记为放弃：', {
+              connectionId,
+              userId: session.userId,
+              roomId: room.id,
+            });
+            
+            this.broadcastToRoomExcept(room, session.userId, {
+              type: ServerCommandType.PlayerFinished,
+              player: {
+                userId: session.userId,
+                userName: player.user.name,
+                score: null,
+              },
+            });
+            
+            this.broadcastMessage(room, {
+              type: 'Abort',
+              user: session.userId,
+            });
+          }
+        }
+        
         this.roomManager.removePlayerFromRoom(roomId, session.userId);
+        
         if (wasPlaying) {
           const updatedRoom = this.roomManager.getRoom(roomId);
           if (updatedRoom) {
             this.checkGameEnd(updatedRoom);
           }
         }
+      }
+      
+      if (this.userConnections.get(session.userId) === connectionId) {
+        this.userConnections.delete(session.userId);
       }
       this.sessions.delete(connectionId);
     }
@@ -229,7 +280,7 @@ export class ProtocolHandler {
     token: string,
     sendResponse: (response: ServerCommand) => void,
   ): void {
-    this.logger.debug('重复验证尝试：', { connectionId, tokenLength: token.length });
+    this.logger.debug('验证尝试：', { connectionId, tokenLength: token.length });
 
     if (this.sessions.has(connectionId)) {
       this.logger.warn('重复验证尝试：', { connectionId });
@@ -253,11 +304,29 @@ export class ProtocolHandler {
       try {
         const userInfo = await this.authService.authenticate(token);
 
+        const existingConnectionId = this.userConnections.get(userInfo.id);
+        if (existingConnectionId && existingConnectionId !== connectionId) {
+          this.logger.warn('用户已在其他连接登录，踢出旧连接：', {
+            userId: userInfo.id,
+            oldConnectionId: existingConnectionId,
+            newConnectionId: connectionId,
+          });
+          
+          const closeConnection = this.connectionClosers.get(existingConnectionId);
+          if (closeConnection) {
+            closeConnection();
+          }
+          
+          this.handleDisconnection(existingConnectionId);
+        }
+
         this.sessions.set(connectionId, {
           userId: userInfo.id,
           userInfo,
           connectionId,
         });
+
+        this.userConnections.set(userInfo.id, connectionId);
 
         this.logger.debug('验证成功：', {
           connectionId,
