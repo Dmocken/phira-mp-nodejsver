@@ -60,7 +60,6 @@ export class ProtocolHandler {
     }
   }
 
-  // Helper to broadcast Message to all room members
   private broadcastMessage(room: Room, message: Message): void {
     const serverCmd: ServerCommand = {
       type: ServerCommandType.Message,
@@ -75,7 +74,6 @@ export class ProtocolHandler {
     }
   }
 
-  // Helper to broadcast ServerCommand to all room members
   private broadcastToRoom(room: Room, command: ServerCommand, excludeConnectionId?: string): void {
     for (const playerInfo of room.players.values()) {
       if (excludeConnectionId && playerInfo.connectionId === excludeConnectionId) {
@@ -100,9 +98,7 @@ export class ProtocolHandler {
     }
   }
 
-  // Source: phira-mp-server/src/session.rs:559-592
   private async fetchChartInfo(chartId: number): Promise<ChartInfo> {
-    // Using the same API endpoint as the Rust implementation
     const response = await fetch(`https://phira.5wyxi.com/chart/${chartId}`);
     
     if (!response.ok) {
@@ -120,7 +116,7 @@ export class ProtocolHandler {
   }
 
   handleConnection(connectionId: string, closeConnection?: () => void): void {
-    this.logger.debug('建立协议连接：', {
+    this.logger.debug('建立连接：', {
       connectionId,
       totalRooms: this.roomManager.count(),
     });
@@ -193,7 +189,7 @@ export class ProtocolHandler {
       this.sessions.delete(connectionId);
     }
     this.broadcastCallbacks.delete(connectionId);
-    this.logger.info('协议连接断开：', { connectionId });
+    this.logger.info('连接断开：', { connectionId });
   }
 
   handleMessage(
@@ -201,7 +197,7 @@ export class ProtocolHandler {
     message: ClientCommand,
     sendResponse: (response: ServerCommand) => void,
   ): void {
-    this.logger.debug('收到协议信息：', {
+    this.logger.debug('收到信息：', {
       connectionId,
       messageType: ClientCommandType[message.type],
     });
@@ -274,7 +270,6 @@ export class ProtocolHandler {
     }
   }
 
-  // Source: phira-mp-server/src/session.rs:168-257
   private handleAuthenticate(
     connectionId: string,
     token: string,
@@ -358,7 +353,6 @@ export class ProtocolHandler {
     void authenticate();
   }
 
-  // Source: phira-mp-server/src/session.rs:381-388
   private handleChat(
     connectionId: string,
     message: string,
@@ -400,7 +394,6 @@ export class ProtocolHandler {
     });
   }
 
-  // Source: phira-mp-server/src/session.rs:425-450
   private handleCreateRoom(
     connectionId: string,
     roomId: string,
@@ -461,7 +454,6 @@ export class ProtocolHandler {
     }
   }
 
-  // Source: phira-mp-server/src/session.rs:452-503
   private handleJoinRoom(
     connectionId: string,
     roomId: string,
@@ -517,7 +509,6 @@ export class ProtocolHandler {
     if (success) {
       this.logger.info(`玩家 ${session.userId} 加入房间 ${roomId}`);
 
-      // Broadcast to all members that user joined
       this.broadcastToRoom(room, {
         type: ServerCommandType.OnJoinRoom,
         user: userInfo,
@@ -529,7 +520,6 @@ export class ProtocolHandler {
         name: session.userInfo.name,
       });
 
-      // Send join response
       const joinResponse: JoinRoomResponse = {
         state: room.state,
         users: Array.from(room.players.values()).map((p) => p.user),
@@ -548,7 +538,6 @@ export class ProtocolHandler {
     }
   }
 
-  // Source: phira-mp-server/src/session.rs:505-523
   private handleLeaveRoom(
     connectionId: string,
     sendResponse: (response: ServerCommand) => void,
@@ -588,7 +577,6 @@ export class ProtocolHandler {
 
     this.roomManager.removePlayerFromRoom(room.id, session.userId);
 
-    // Check if room still exists and handle host transfer
     const updatedRoom = this.roomManager.getRoom(room.id);
     if (updatedRoom && wasHost && updatedRoom.ownerId !== session.userId) {
       this.broadcastMessage(updatedRoom, {
@@ -596,7 +584,6 @@ export class ProtocolHandler {
         user: updatedRoom.ownerId,
       });
 
-      // Notify new host
       for (const playerInfo of updatedRoom.players.values()) {
         const isHost = playerInfo.user.id === updatedRoom.ownerId;
         const callback = this.broadcastCallbacks.get(playerInfo.connectionId);
@@ -619,7 +606,6 @@ export class ProtocolHandler {
     });
   }
 
-  // Source: phira-mp-server/src/session.rs:525-540
   private handleLockRoom(
     connectionId: string,
     lock: boolean,
@@ -671,7 +657,6 @@ export class ProtocolHandler {
     });
   }
 
-  // Source: phira-mp-server/src/session.rs:542-557
   private handleCycleRoom(
     connectionId: string,
     cycle: boolean,
@@ -723,7 +708,6 @@ export class ProtocolHandler {
     });
   }
 
-  // Source: phira-mp-server/src/session.rs:559-592
   private handleSelectChart(
     connectionId: string,
     chartId: number,
@@ -770,7 +754,6 @@ export class ProtocolHandler {
       chartId,
     });
 
-    // Fetch chart async
     const fetchAndUpdate = async (): Promise<void> => {
       try {
         const chart = await this.fetchChartInfo(chartId);
@@ -781,11 +764,9 @@ export class ProtocolHandler {
           chartName: chart.name,
         });
 
-        // Update room chart
         this.roomManager.setRoomChart(room.id, chart);
         this.roomManager.setRoomState(room.id, { type: 'SelectChart', chartId: chart.id });
 
-        // Broadcast to all room members
         this.broadcastMessage(room, {
           type: 'SelectChart',
           user: session.userId,
@@ -793,13 +774,11 @@ export class ProtocolHandler {
           id: chart.id,
         });
 
-        // Broadcast state change
         this.broadcastToRoom(room, {
           type: ServerCommandType.ChangeState,
           state: { type: 'SelectChart', chartId: chart.id },
         });
 
-        // Send success response
         this.respond(connectionId, sendResponse, {
           type: ServerCommandType.SelectChart,
           result: { ok: true, value: undefined },
@@ -822,7 +801,6 @@ export class ProtocolHandler {
     void fetchAndUpdate();
   }
 
-  // Source: phira-mp-server/src/session.rs:594-612
   private handleRequestStart(
     connectionId: string,
     sendResponse: (response: ServerCommand) => void,
@@ -881,7 +859,6 @@ export class ProtocolHandler {
       playerInfo.score = null;
     }
 
-    // Change to WaitingForReady state
     this.roomManager.setRoomState(room.id, { type: 'WaitingForReady' });
 
     this.broadcastMessage(room, {
@@ -900,7 +877,6 @@ export class ProtocolHandler {
     });
   }
 
-  // Source: phira-mp-server/src/session.rs:614-629
   private handleReady(
     connectionId: string,
     sendResponse: (response: ServerCommand) => void,
@@ -961,7 +937,6 @@ export class ProtocolHandler {
       user: session.userId,
     });
 
-    // Check if all non-host players are ready
     const allReady = Array.from(room.players.values())
       .filter((p) => p.user.id !== room.ownerId)
       .every((p) => p.isReady);
@@ -989,7 +964,6 @@ export class ProtocolHandler {
     });
   }
 
-  // Source: phira-mp-server/src/session.rs:631-651
   private handleCancelReady(
     connectionId: string,
     sendResponse: (response: ServerCommand) => void,
@@ -1029,8 +1003,6 @@ export class ProtocolHandler {
       return;
     }
 
-    // Room owners can cancel regardless of their ready state
-    // This allows them to cancel the game even when not ready
     if (room.ownerId !== session.userId && !player.isReady) {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.CancelReady,
@@ -1049,11 +1021,9 @@ export class ProtocolHandler {
     player.isFinished = false;
     player.score = null;
 
-    // If host cancels, cancel entire game
     if (room.ownerId === session.userId) {
       this.roomManager.setRoomState(room.id, { type: 'SelectChart', chartId: room.selectedChart?.id ?? null });
 
-      // Reset all ready states
       for (const playerId of room.players.keys()) {
         this.roomManager.setPlayerReady(room.id, playerId, false);
       }
@@ -1085,12 +1055,11 @@ export class ProtocolHandler {
     });
   }
 
-  // Source: phira-mp-server/src/session.rs:653-690
-  private handlePlayed(
+  private async handlePlayed(
     connectionId: string,
     recordId: number,
     sendResponse: (response: ServerCommand) => void,
-  ): void {
+  ): Promise<void> {
     const session = this.sessions.get(connectionId);
     if (!session) {
       this.respond(connectionId, sendResponse, {
@@ -1116,14 +1085,20 @@ export class ProtocolHandler {
       recordId,
     });
 
-    // For now, just broadcast the played message
-    // In full implementation, would fetch record from API
+    const response = await fetch(`https://phira.5wyxi.com/record/${recordId}`)
+
+    if (!response.ok) {
+      throw new Error(`API返回了一个神秘的状态： ${response.status}`);
+    }
+
+    const recordInfo = await response.json();
+
     this.broadcastMessage(room, {
       type: 'Played',
       user: session.userId,
-      score: 0,
-      accuracy: 0,
-      fullCombo: false,
+      score: recordInfo.score,
+      accuracy: recordInfo.accuracy,
+      fullCombo: recordInfo.fullCombo,
     });
 
     this.respond(connectionId, sendResponse, {
@@ -1158,27 +1133,27 @@ export class ProtocolHandler {
     if (room.state.type !== 'Playing') {
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.GameResultReceived,
-        result: { ok: false, error: 'Game not in progress' },
+        result: { ok: false, error: '游戏未进行中' },
       });
       return;
     }
 
     const player = room.players.get(session.userId);
     if (!player) {
-      this.logger.warn('Game result received but player not found in room', {
+      this.logger.warn('收到游戏结果，但在房间里找不到玩家：', {
         connectionId,
         userId: session.userId,
         roomId: room.id,
       });
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.GameResultReceived,
-        result: { ok: false, error: 'Player not found in room' },
+        result: { ok: false, error: '房间里找不到玩家' },
       });
       return;
     }
 
     if (player.isFinished) {
-      this.logger.debug('Duplicate game result submission ignored', {
+      this.logger.debug('重复的游戏结果提交被忽略：', {
         connectionId,
         userId: session.userId,
         roomId: room.id,
@@ -1204,7 +1179,7 @@ export class ProtocolHandler {
     player.score = playerScore;
     player.isFinished = true;
 
-    this.logger.info('Player finished game', {
+    this.logger.info('玩家结束游戏', {
       connectionId,
       roomId: room.id,
       userId: session.userId,
@@ -1239,7 +1214,6 @@ export class ProtocolHandler {
     this.checkGameEnd(room);
   }
 
-  // Source: phira-mp-server/src/session.rs:692-710
   private handleAbort(
     connectionId: string,
     sendResponse: (response: ServerCommand) => void,
@@ -1286,7 +1260,7 @@ export class ProtocolHandler {
 
     const activePlayers = Array.from(room.players.values()).filter((playerInfo) => !playerInfo.user.monitor);
     if (activePlayers.length === 0) {
-      this.logger.info('No active players remaining, ending game', {
+      this.logger.info('没有活跃玩家，游戏结束', {
         roomId: room.id,
       });
       this.endGame(room);
@@ -1295,7 +1269,7 @@ export class ProtocolHandler {
 
     const finishedPlayers = activePlayers.filter((playerInfo) => playerInfo.isFinished);
     if (finishedPlayers.length !== activePlayers.length) {
-      this.logger.debug('Waiting for more players to finish', {
+      this.logger.debug('等待更多玩家完成游戏', {
         roomId: room.id,
         finished: finishedPlayers.length,
         total: activePlayers.length,
@@ -1303,7 +1277,7 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.info('All players finished, ending game', {
+    this.logger.info('所有玩家都结束了游戏', {
       roomId: room.id,
       playerCount: activePlayers.length,
     });
@@ -1313,7 +1287,7 @@ export class ProtocolHandler {
 
   private endGame(room: Room): void {
     if (room.state.type !== 'Playing') {
-      this.logger.debug('endGame invoked but room not in playing state', {
+      this.logger.debug('结束游戏调用，但房间不在游玩中状态', {
         roomId: room.id,
         state: room.state.type,
       });
@@ -1345,40 +1319,31 @@ export class ProtocolHandler {
 
     this.broadcastMessage(room, { type: 'GameEnd' });
 
-    // 根据循环模式决定游戏结束后的行为
     if (room.cycle) {
-      // 循环模式：保留谱面，只重置玩家状态
-      this.logger.info('Loop mode enabled, resetting for next round', {
-        roomId: room.id,
-      });
+      this.logger.info(`房间 ${room.id} 循环模式已开启`);
       
       this.roomManager.setRoomState(room.id, {
         type: 'WaitingForReady',
       });
       
-      // 重置玩家状态但保留谱面
       for (const playerInfo of room.players.values()) {
         playerInfo.isReady = false;
         playerInfo.isFinished = false;
         playerInfo.score = null;
       }
       
-      // 保留 room.selectedChart 以便直接开始下一局
     } else {
-      // 非循环模式：完全重置，清除谱面
-      this.logger.info('Normal mode, full reset', {
+      this.logger.info('普通模式', {
         roomId: room.id,
       });
       
       this.roomManager.setRoomState(room.id, {
         type: 'SelectChart',
-        chartId: null,  // 清除谱面
+        chartId: null,
       });
       
-      // 清除谱面
       this.roomManager.setRoomChart(room.id, undefined);
       
-      // 重置所有玩家状态
       for (const playerInfo of room.players.values()) {
         playerInfo.isReady = false;
         playerInfo.isFinished = false;
@@ -1386,7 +1351,7 @@ export class ProtocolHandler {
       }
     }
 
-    this.logger.info('Game ended, room reset completed', {
+    this.logger.info('游戏结束，房间已重置', {
       roomId: room.id,
       cycle: room.cycle,
       rankings: rankings.map((entry) => ({

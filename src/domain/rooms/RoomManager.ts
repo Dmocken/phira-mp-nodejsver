@@ -106,7 +106,7 @@ export class InMemoryRoomManager implements RoomManager {
     };
 
     this.rooms.set(id, room);
-    this.logger.info(`${ownerId} 创建了房间 ${id}`, { id, name, ownerId, totalRooms: this.rooms.size });
+    this.logger.info(`${ownerId} 创建了房间 ${id}`);
 
     return room;
   }
