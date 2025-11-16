@@ -51,9 +51,6 @@ export enum ServerCommandType {
   CancelReady = 17,
   Played = 18,
   Abort = 19,
-  GameResultReceived = 20,
-  PlayerFinished = 21,
-  GameEnded = 22,
 }
 
 // Source: phira-mp-common/src/command.rs:157-178
@@ -179,12 +176,6 @@ export type ServerCommand =
   | { type: ServerCommandType.CancelReady; result: Result<void> }
   | { type: ServerCommandType.Played; result: Result<void> }
   | { type: ServerCommandType.Abort; result: Result<void> }
-  | { type: ServerCommandType.GameResultReceived; result: Result<void> }
-  | {
-      type: ServerCommandType.PlayerFinished;
-      player: { userId: number; userName: string; score: PlayerScore | null };
-    }
-  | { type: ServerCommandType.GameEnded; rankings: PlayerRanking[]; chartId: number | null; endedAt: number };
 
 export interface ParsedClientCommand {
   rawType: number;
@@ -345,7 +336,6 @@ export class CommandParser {
       case ServerCommandType.CancelReady:
       case ServerCommandType.Played:
       case ServerCommandType.Abort:
-      case ServerCommandType.GameResultReceived:
         // Result<(), String>
         if (command.result.ok) {
           writer.bool(true);
@@ -381,23 +371,6 @@ export class CommandParser {
 
       case ServerCommandType.OnJoinRoom:
         CommandParser.writeUserInfo(writer, command.user);
-        break;
-
-      case ServerCommandType.PlayerFinished:
-        writer.i32(command.player.userId);
-        writer.string(command.player.userName);
-        CommandParser.writePlayerScoreOption(writer, command.player.score);
-        break;
-
-      case ServerCommandType.GameEnded:
-        CommandParser.writeRankings(writer, command.rankings);
-        if (command.chartId !== null) {
-          writer.bool(true);
-          writer.i32(command.chartId);
-        } else {
-          writer.bool(false);
-        }
-        writer.u64(BigInt(Math.max(0, command.endedAt)));
         break;
 
       case ServerCommandType.Touches:

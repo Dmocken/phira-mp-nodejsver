@@ -103,7 +103,7 @@ export class InMemoryRoomManager implements RoomManager {
       state: { type: 'SelectChart', chartId: null },
       locked: false,
       cycle: false,
-      live: true,
+      live: false,
       createdAt: Date.now(),
     };
 
