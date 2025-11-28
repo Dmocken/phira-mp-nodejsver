@@ -19,7 +19,6 @@ import {
   JoinRoomResponse,
   Message,
   PlayerRanking,
-  PlayerScore,
 } from './Commands';
 
 interface UserSession {
@@ -77,18 +76,6 @@ export class ProtocolHandler {
   private broadcastToRoom(room: Room, command: ServerCommand, excludeConnectionId?: string): void {
     for (const playerInfo of room.players.values()) {
       if (excludeConnectionId && playerInfo.connectionId === excludeConnectionId) {
-        continue;
-      }
-      const callback = this.broadcastCallbacks.get(playerInfo.connectionId);
-      if (callback) {
-        callback(command);
-      }
-    }
-  }
-
-  private broadcastToRoomExcept(room: Room, excludeUserId: number, command: ServerCommand): void {
-    for (const [userId, playerInfo] of room.players.entries()) {
-      if (userId === excludeUserId) {
         continue;
       }
       const callback = this.broadcastCallbacks.get(playerInfo.connectionId);
@@ -156,15 +143,6 @@ export class ProtocolHandler {
               maxCombo: 0,
               finishTime: Date.now(),
             };
-            
-            this.broadcastToRoomExcept(room, session.userId, {
-              type: ServerCommandType.PlayerFinished,
-              player: {
-                userId: session.userId,
-                userName: player.user.name,
-                score: null,
-              },
-            });
             
             this.broadcastMessage(room, {
               type: 'Abort',
@@ -256,10 +234,6 @@ export class ProtocolHandler {
         // handlePlayed is async but we don't await it (fire-and-forget)
         // Errors are handled internally
         void this.handlePlayed(connectionId, message.id, sendResponse);
-        break;
-
-      case ClientCommandType.GameResult:
-        this.handleGameResult(connectionId, message, sendResponse);
         break;
 
       case ClientCommandType.Abort:
@@ -1232,136 +1206,12 @@ export class ProtocolHandler {
       fullCombo: recordInfo.fullCombo,
     });
 
-    // 广播 PlayerFinished 给其他玩家
-    this.broadcastToRoomExcept(room, session.userId, {
-      type: ServerCommandType.PlayerFinished,
-      player: {
-        userId: session.userId,
-        userName: player.user.name,
-        score: { ...player.score },
-      },
-    });
-
     this.respond(connectionId, sendResponse, {
       type: ServerCommandType.Played,
       result: { ok: true, value: undefined },
     });
 
     // 检查游戏是否结束
-    this.checkGameEnd(room);
-  }
-
-  private handleGameResult(
-    connectionId: string,
-    message: Extract<ClientCommand, { type: ClientCommandType.GameResult }>,
-    sendResponse: (response: ServerCommand) => void,
-  ): void {
-    const session = this.sessions.get(connectionId);
-    if (!session) {
-      this.respond(connectionId, sendResponse, {
-        type: ServerCommandType.GameResultReceived,
-        result: { ok: false, error: '未验证' },
-      });
-      return;
-    }
-
-    const room = this.roomManager.getRoomByUserId(session.userId);
-    if (!room) {
-      this.respond(connectionId, sendResponse, {
-        type: ServerCommandType.GameResultReceived,
-        result: { ok: false, error: '房间不存在喵' },
-      });
-      return;
-    }
-
-    if (room.state.type !== 'Playing') {
-      this.respond(connectionId, sendResponse, {
-        type: ServerCommandType.GameResultReceived,
-        result: { ok: false, error: '游戏未进行中' },
-      });
-      return;
-    }
-
-    const player = room.players.get(session.userId);
-    if (!player) {
-      this.logger.warn('收到游戏结果，但在房间里找不到玩家：', {
-        connectionId,
-        userId: session.userId,
-        roomId: room.id,
-      });
-      this.respond(connectionId, sendResponse, {
-        type: ServerCommandType.GameResultReceived,
-        result: { ok: false, error: '房间里找不到玩家' },
-      });
-      return;
-    }
-
-    if (player.isFinished) {
-      this.logger.debug('重复的游戏结果提交被忽略：', {
-        connectionId,
-        userId: session.userId,
-        roomId: room.id,
-      });
-      this.respond(connectionId, sendResponse, {
-        type: ServerCommandType.GameResultReceived,
-        result: { ok: true, value: undefined },
-      });
-      return;
-    }
-
-    const playerScore: PlayerScore = {
-      score: message.score,
-      accuracy: message.accuracy,
-      perfect: message.perfect,
-      good: message.good,
-      bad: message.bad,
-      miss: message.miss,
-      maxCombo: message.maxCombo,
-      finishTime: Date.now(),
-    };
-
-    player.score = playerScore;
-    player.isFinished = true;
-
-    const finishedPlayers = Array.from(room.players.values()).filter(
-      (p) => !p.user.monitor && p.isFinished
-    );
-    const activePlayers = Array.from(room.players.values()).filter((p) => !p.user.monitor);
-
-    this.logger.info('[游戏结果] 已收到', {
-      connectionId,
-      roomId: room.id,
-      userId: session.userId,
-      score: playerScore.score,
-      accuracy: playerScore.accuracy,
-      finishedCount: finishedPlayers.length,
-      totalPlayers: activePlayers.length,
-    });
-
-    const fullCombo = message.miss === 0 && message.bad === 0;
-
-    this.respond(connectionId, sendResponse, {
-      type: ServerCommandType.GameResultReceived,
-      result: { ok: true, value: undefined },
-    });
-
-    this.broadcastToRoomExcept(room, session.userId, {
-      type: ServerCommandType.PlayerFinished,
-      player: {
-        userId: session.userId,
-        userName: player.user.name,
-        score: { ...playerScore },
-      },
-    });
-
-    this.broadcastMessage(room, {
-      type: 'Played',
-      user: session.userId,
-      score: message.score,
-      accuracy: message.accuracy,
-      fullCombo,
-    });
-
     this.checkGameEnd(room);
   }
 
@@ -1417,16 +1267,6 @@ export class ProtocolHandler {
         this.logger.info('[游戏结果] 已标记为放弃', {
           userId: session.userId,
           roomId: room.id,
-        });
-
-        // 广播玩家完成消息
-        this.broadcastToRoomExcept(room, session.userId, {
-          type: ServerCommandType.PlayerFinished,
-          player: {
-            userId: session.userId,
-            userName: player.user.name,
-            score: null,
-          },
         });
 
         // 检查游戏是否结束
@@ -1497,7 +1337,6 @@ export class ProtocolHandler {
       cycle: room.cycle,
     });
 
-    const endedAt = Date.now();
     const activePlayers = Array.from(room.players.values()).filter((playerInfo) => !playerInfo.user.monitor);
 
     const rankings: PlayerRanking[] = activePlayers
@@ -1512,13 +1351,6 @@ export class ProtocolHandler {
         ...entry,
         rank: index + 1,
       }));
-
-    this.broadcastToRoom(room, {
-      type: ServerCommandType.GameEnded,
-      rankings,
-      chartId: room.selectedChart?.id ?? null,
-      endedAt,
-    });
 
     this.broadcastMessage(room, { type: 'GameEnd' });
 

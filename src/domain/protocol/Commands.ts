@@ -409,16 +409,6 @@ export class CommandParser {
     writer.u64(BigInt(Math.max(0, score.finishTime)));
   }
 
-  private static writeRankings(writer: BinaryWriter, rankings: PlayerRanking[]): void {
-    writer.uleb(rankings.length);
-    for (const ranking of rankings) {
-      writer.u32(ranking.rank);
-      writer.i32(ranking.userId);
-      writer.string(ranking.userName);
-      CommandParser.writePlayerScoreOption(writer, ranking.score);
-    }
-  }
-
   private static writeRoomState(writer: BinaryWriter, state: RoomState): void {
     switch (state.type) {
       case 'SelectChart':
