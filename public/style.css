@@ -1,0 +1,208 @@
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background-color: #f4f7f9;
+    color: #333;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+}
+
+.container {
+    width: 100%;
+    max-width: 800px;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+h1 {
+    margin: 0;
+    font-size: 1.8em;
+    color: #2c3e50;
+}
+
+.connection-status {
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-weight: bold;
+}
+
+.connection-status.connected {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.connection-status.disconnected {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.room-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 20px;
+}
+
+.room-card {
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    transition: box-shadow 0.2s ease-in-out;
+}
+
+.room-card:hover {
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.room-card h2 {
+    margin: 0 0 10px 0;
+    font-size: 1.2em;
+    color: #3498db;
+}
+
+.room-info {
+    font-size: 0.9em;
+}
+
+.room-info p {
+    margin: 5px 0;
+    display: flex;
+    justify-content: space-between;
+}
+
+.room-info span {
+    font-weight: bold;
+}
+
+.locked-status {
+    color: #e74c3c;
+}
+
+.unlocked-status {
+    color: #2ecc71;
+}
+
+/* Room Detail Page Styles */
+.back-link {
+    display: inline-block;
+    margin-bottom: 20px;
+    color: #3498db;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+.back-link:hover {
+    text-decoration: underline;
+}
+
+.details-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.detail-card {
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.detail-card.full-width {
+    grid-column: 1 / -1;
+}
+
+.detail-card h3 {
+    margin-top: 0;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+    color: #3498db;
+}
+
+.detail-card p {
+    display: flex;
+    justify-content: space-between;
+}
+
+.player-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.player-item {
+    padding: 10px;
+    border-bottom: 1px solid #f0f0f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.player-item:last-child {
+    border-bottom: none;
+}
+
+.player-item.owner {
+    font-weight: bold;
+}
+
+.player-item.ready .player-status {
+    color: #27ae60;
+}
+
+.player-status {
+    font-style: italic;
+    color: #95a5a6;
+}
+
+.player-name {
+    text-decoration: none;
+    color: inherit;
+}
+
+.player-name:hover {
+    text-decoration: underline;
+}
+
+#total-players {
+    padding: 5px 10px;
+    background-color: #ecf0f1;
+    color: #34495e;
+    border-radius: 5px;
+    font-size: 0.9em;
+}
+#total-players a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.player-info-left {
+    display: flex;
+    align-items: center;
+}
+
+.player-icon {
+    width: 25px;
+    text-align: center;
+    display: inline-block;
+}
+
+.logout-icon {
+    margin-left: 10px;
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+.logout-icon:hover {
+    color: #e74c3c;
+}

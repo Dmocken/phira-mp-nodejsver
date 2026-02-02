@@ -38,7 +38,26 @@ export class ProtocolHandler {
     private readonly authService: AuthService,
     private readonly logger: Logger,
     private readonly serverName: string,
+    private readonly onSessionChange?: () => void,
   ) {}
+
+  public getSessionCount(): number {
+    return this.sessions.size;
+  }
+
+  public getAllSessions(): { id: number; name: string; roomId?: string; roomName?: string }[] {
+    const sessions: { id: number; name: string; roomId?: string; roomName?: string }[] = [];
+    for (const session of this.sessions.values()) {
+      const room = this.roomManager.getRoomByUserId(session.userId);
+      sessions.push({
+        id: session.userId,
+        name: session.userInfo.name,
+        roomId: room?.id,
+        roomName: room?.name,
+      });
+    }
+    return sessions;
+  }
 
   private respond(
     connectionId: string,
@@ -170,6 +189,7 @@ export class ProtocolHandler {
         this.userConnections.delete(session.userId);
       }
       this.sessions.delete(connectionId);
+      this.onSessionChange?.();
     }
     this.broadcastCallbacks.delete(connectionId);
     this.logger.info('[断线] 连接断开', { 
@@ -310,6 +330,7 @@ export class ProtocolHandler {
             
             // 清理旧连接的会话信息，但不执行房间逻辑
             this.sessions.delete(existingConnectionId);
+            this.onSessionChange?.();
             this.broadcastCallbacks.delete(existingConnectionId);
             this.connectionClosers.delete(existingConnectionId);
             
@@ -339,6 +360,8 @@ export class ProtocolHandler {
           userInfo,
           connectionId,
         });
+
+        this.onSessionChange?.();
 
         this.userConnections.set(userInfo.id, connectionId);
 
@@ -455,25 +478,29 @@ export class ProtocolHandler {
         result: { ok: true, value: undefined },
       });
 
+      // 2. Force the client to process its own join and the server user's join
+      // to ensure the user list is populated before other messages arrive.
       this.broadcastToRoom(room, {
         type: ServerCommandType.OnJoinRoom,
         user: session.userInfo,
       });
-      // Delay server user join to ensure client processes its own join first
-      setTimeout(() => {
-        this.broadcastToRoom(room, {
-          type: ServerCommandType.OnJoinRoom,
-          user: { id: -1, name: this.serverName, monitor: true },
-        });
-      }, 50);
+      this.broadcastToRoom(room, {
+        type: ServerCommandType.OnJoinRoom,
+        user: { id: -1, name: this.serverName, monitor: true },
+      });
       
-      // 3. Now, broadcast that the room was created, but with a delay to mitigate race conditions on the client.
-      setTimeout(() => {
-        this.broadcastMessage(room, {
-          type: 'CreateRoom',
-          user: session.userId,
-        });
-      }, 150);
+      // 3. Now, broadcast that the room was created. The client should have the user name now.
+      this.broadcastMessage(room, {
+        type: 'CreateRoom',
+        user: session.userId,
+      });
+
+      // 4. Send announcement
+      this.broadcastMessage(room, {
+        type: 'Chat',
+        user: -1,
+        content: '【公告】服务器在处于开发阶段 如果出现断开连接或重连属于正常现象',
+      });
     } catch (error) {
       const errorMessage = (error as Error).message;
 
@@ -555,6 +582,13 @@ export class ProtocolHandler {
         type: 'JoinRoom',
         user: session.userId,
         name: session.userInfo.name,
+      });
+
+      // Send announcement to the whole room
+      this.broadcastMessage(room, {
+        type: 'Chat',
+        user: -1, // System User
+        content: '【公告】服务器在处于开发阶段 如果出现断开连接或重连属于正常现象',
       });
 
       const usersInRoom = Array.from(room.players.values()).map((p) => p.user);

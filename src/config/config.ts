@@ -28,16 +28,21 @@ export interface LoggingOptions {
 export interface ServerConfig {
   port: number;
   host: string;
+  webPort: number;
   protocol: ProtocolOptions;
   logging: LoggingOptions;
   phiraApiUrl: string;
   serverName: string;
   roomSize: number;
+  adminName: string;
+  adminPassword: string;
+  sessionSecret: string;
 }
 
 const defaultConfig: ServerConfig = {
   port: 12346,
   host: '0.0.0.0',
+  webPort: 8080,
   protocol: {
     tcp: true,
   },
@@ -47,6 +52,9 @@ const defaultConfig: ServerConfig = {
   phiraApiUrl: 'https://phira.5wyxi.com',
   serverName: 'Server',
   roomSize: 8,
+  adminName: 'admin',
+  adminPassword: 'password',
+  sessionSecret: 'a-very-insecure-secret-change-it',
 };
 
 const parseBoolean = (value: string | undefined, fallback: boolean): boolean => {
@@ -62,8 +70,14 @@ export const env = {
   // 服务器配置
   port: parseInt(process.env.PORT || '12346', 10),
   host: process.env.HOST || '0.0.0.0',
+  webPort: parseInt(process.env.WEB_PORT || '8080', 10),
   roomSize: parseInt(process.env.ROOM_SIZE || '8', 10),
   
+  // Admin
+  adminName: process.env.ADMIN_NAME || 'admin',
+  adminPassword: process.env.ADMIN_PASSWORD || 'password',
+  sessionSecret: process.env.SESSION_SECRET || 'a-very-insecure-secret-change-it',
+
   // Phira API
   phiraApiUrl: process.env.PHIRA_API_URL || 'https://phira.5wyxi.com',
   
@@ -95,6 +109,7 @@ export const createServerConfig = (overrides: Partial<ServerConfig> = {}): Serve
   const envConfig: ServerConfig = {
     port: Number.parseInt(process.env.PORT ?? `${defaultConfig.port}`, 10),
     host: process.env.HOST ?? defaultConfig.host,
+    webPort: Number.parseInt(process.env.WEB_PORT ?? `${defaultConfig.webPort}`, 10),
     protocol: {
       tcp: parseBoolean(process.env.TCP_ENABLED, defaultConfig.protocol.tcp),
     },
@@ -104,6 +119,9 @@ export const createServerConfig = (overrides: Partial<ServerConfig> = {}): Serve
     phiraApiUrl: process.env.PHIRA_API_URL ?? defaultConfig.phiraApiUrl,
     serverName: process.env.SERVER_NAME ?? defaultConfig.serverName,
     roomSize: Number.parseInt(process.env.ROOM_SIZE ?? `${defaultConfig.roomSize}`, 10),
+    adminName: process.env.ADMIN_NAME ?? defaultConfig.adminName,
+    adminPassword: process.env.ADMIN_PASSWORD ?? defaultConfig.adminPassword,
+    sessionSecret: process.env.SESSION_SECRET ?? defaultConfig.sessionSecret,
   };
 
   return {

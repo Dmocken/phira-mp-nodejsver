@@ -72,15 +72,42 @@ export interface RoomManager {
   migrateConnection(userId: number, oldConnectionId: string, newConnectionId: string): void;
   setSoloConfirmPending(roomId: string, pending: boolean): boolean;
   isSoloConfirmPending(roomId: string): boolean;
+  getAllPlayers(): { id: number; name: string; roomId: string; roomName: string }[];
 }
 
 export class InMemoryRoomManager implements RoomManager {
   private readonly rooms = new Map<string, Room>();
+  private onRoomsChanged: (() => void) | null = null;
 
   constructor(
     private readonly logger: Logger,
     private readonly roomSize: number = 8,
-  ) {}
+    onRoomsChanged: (() => void) | null = null,
+  ) {
+    this.onRoomsChanged = onRoomsChanged;
+  }
+
+  getAllPlayers(): { id: number; name: string; roomId: string; roomName: string }[] {
+    const allPlayers: { id: number; name: string; roomId: string; roomName: string }[] = [];
+    for (const room of this.rooms.values()) {
+      for (const player of room.players.values()) {
+        allPlayers.push({
+          id: player.user.id,
+          name: player.user.name,
+          roomId: room.id,
+          roomName: room.name,
+        });
+      }
+    }
+    return allPlayers;
+  }
+
+
+  private notifyRoomsChanged(): void {
+    if (this.onRoomsChanged) {
+      this.onRoomsChanged();
+    }
+  }
 
   createRoom(options: CreateRoomOptions): Room {
     const { id, name, ownerId, ownerInfo, connectionId, maxPlayers = this.roomSize, password } = options;
@@ -116,6 +143,7 @@ export class InMemoryRoomManager implements RoomManager {
 
     this.rooms.set(id, room);
     this.logger.info(`房间 ${id} 已被创建`);
+    this.notifyRoomsChanged();
 
     return room;
   }
@@ -129,6 +157,7 @@ export class InMemoryRoomManager implements RoomManager {
 
     if (deleted) {
       this.logger.info(`由于 ${id} 房间没有人，删除房间 ${id}`);
+      this.notifyRoomsChanged();
     }
 
     return deleted;
@@ -178,6 +207,7 @@ export class InMemoryRoomManager implements RoomManager {
     });
 
     this.logger.debug('已添加玩家到房间：', { roomId, userId, playerCount: room.players.size });
+    this.notifyRoomsChanged();
     return true;
   }
 
@@ -190,6 +220,7 @@ export class InMemoryRoomManager implements RoomManager {
     const removed = room.players.delete(userId);
     if (removed) {
       this.logger.info(`从房间 ${roomId} 移除玩家 ${userId}`);
+      this.notifyRoomsChanged();
 
       if (room.players.size === 0) {
         this.deleteRoom(roomId);
@@ -219,6 +250,7 @@ export class InMemoryRoomManager implements RoomManager {
 
     room.state = state;
     this.logger.debug('房间状态改变：', { roomId, state: state.type });
+    this.notifyRoomsChanged();
     return true;
   }
 
@@ -230,6 +262,7 @@ export class InMemoryRoomManager implements RoomManager {
 
     room.locked = locked;
     this.logger.debug('房间锁定状态改变：', { roomId, locked });
+    this.notifyRoomsChanged();
     return true;
   }
 
