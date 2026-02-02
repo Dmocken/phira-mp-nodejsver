@@ -31,6 +31,8 @@ export interface ServerConfig {
   protocol: ProtocolOptions;
   logging: LoggingOptions;
   phiraApiUrl: string;
+  serverName: string;
+  roomSize: number;
 }
 
 const defaultConfig: ServerConfig = {
@@ -43,6 +45,8 @@ const defaultConfig: ServerConfig = {
     level: 'info',
   },
   phiraApiUrl: 'https://phira.5wyxi.com',
+  serverName: 'Server',
+  roomSize: 8,
 };
 
 const parseBoolean = (value: string | undefined, fallback: boolean): boolean => {
@@ -58,6 +62,7 @@ export const env = {
   // 服务器配置
   port: parseInt(process.env.PORT || '12346', 10),
   host: process.env.HOST || '0.0.0.0',
+  roomSize: parseInt(process.env.ROOM_SIZE || '8', 10),
   
   // Phira API
   phiraApiUrl: process.env.PHIRA_API_URL || 'https://phira.5wyxi.com',
@@ -67,6 +72,9 @@ export const env = {
   
   // 日志配置
   logLevel: process.env.LOG_LEVEL || 'info',
+
+  // Server Name
+  serverName: process.env.SERVER_NAME || 'Server',
   
   // 环境
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -94,6 +102,8 @@ export const createServerConfig = (overrides: Partial<ServerConfig> = {}): Serve
       level: process.env.LOG_LEVEL ?? defaultConfig.logging.level,
     },
     phiraApiUrl: process.env.PHIRA_API_URL ?? defaultConfig.phiraApiUrl,
+    serverName: process.env.SERVER_NAME ?? defaultConfig.serverName,
+    roomSize: Number.parseInt(process.env.ROOM_SIZE ?? `${defaultConfig.roomSize}`, 10),
   };
 
   return {

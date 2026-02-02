@@ -77,10 +77,13 @@ export interface RoomManager {
 export class InMemoryRoomManager implements RoomManager {
   private readonly rooms = new Map<string, Room>();
 
-  constructor(private readonly logger: Logger) {}
+  constructor(
+    private readonly logger: Logger,
+    private readonly roomSize: number = 8,
+  ) {}
 
   createRoom(options: CreateRoomOptions): Room {
-    const { id, name, ownerId, ownerInfo, connectionId, maxPlayers = 8, password } = options;
+    const { id, name, ownerId, ownerInfo, connectionId, maxPlayers = this.roomSize, password } = options;
 
     if (this.rooms.has(id)) {
       throw new Error(`房间 ${id} 已存在`);
@@ -112,7 +115,7 @@ export class InMemoryRoomManager implements RoomManager {
     };
 
     this.rooms.set(id, room);
-    this.logger.info(`${ownerInfo.name}[${ownerId}] 创建了房间 ${id}`);
+    this.logger.info(`房间 ${id} 已被创建`);
 
     return room;
   }

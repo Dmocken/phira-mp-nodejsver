@@ -37,6 +37,7 @@ export class ProtocolHandler {
     private readonly roomManager: RoomManager,
     private readonly authService: AuthService,
     private readonly logger: Logger,
+    private readonly serverName: string,
   ) {}
 
   private respond(
@@ -81,6 +82,10 @@ export class ProtocolHandler {
       const callback = this.broadcastCallbacks.get(playerInfo.connectionId);
       if (callback) {
         callback(command);
+        this.logger.debug('广播命令给客户端：', {
+          connectionId: playerInfo.connectionId,
+          commandType: ServerCommandType[command.type],
+        });
       }
     }
   }
@@ -346,6 +351,8 @@ export class ProtocolHandler {
         const room = this.roomManager.getRoomByUserId(userInfo.id);
         const roomState = room ? this.toClientRoomState(room, userInfo.id) : null;
 
+        this.logger.debug('发送给客户端的房间状态：', { roomState });
+
         this.respond(connectionId, sendResponse, {
           type: ServerCommandType.Authenticate,
           result: { ok: true, value: [userInfo, roomState] },
@@ -440,17 +447,33 @@ export class ProtocolHandler {
         connectionId,
       });
 
-      this.broadcastMessage(room, {
-        type: 'CreateRoom',
-        user: session.userId,
-      });
-
       this.logger.debug(`${session.userId} 创建房间 ${room.id} 成功`);
 
+      // 1. Respond with success so the client can transition to the room screen.
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.CreateRoom,
         result: { ok: true, value: undefined },
       });
+
+      this.broadcastToRoom(room, {
+        type: ServerCommandType.OnJoinRoom,
+        user: session.userInfo,
+      });
+      // Delay server user join to ensure client processes its own join first
+      setTimeout(() => {
+        this.broadcastToRoom(room, {
+          type: ServerCommandType.OnJoinRoom,
+          user: { id: -1, name: this.serverName, monitor: true },
+        });
+      }, 50);
+      
+      // 3. Now, broadcast that the room was created, but with a delay to mitigate race conditions on the client.
+      setTimeout(() => {
+        this.broadcastMessage(room, {
+          type: 'CreateRoom',
+          user: session.userId,
+        });
+      }, 150);
     } catch (error) {
       const errorMessage = (error as Error).message;
 
@@ -535,13 +558,15 @@ export class ProtocolHandler {
       });
 
       const usersInRoom = Array.from(room.players.values()).map((p) => p.user);
-      const serverUser: UserInfo = { id: -1, name: 'FunXLink', monitor: true };
+      const serverUser: UserInfo = { id: -1, name: this.serverName, monitor: true };
       
       const joinResponse: JoinRoomResponse = {
         state: room.state,
         users: [...usersInRoom, serverUser],
         live: room.live,
       };
+
+      this.logger.debug('发送给客户端的加入房间响应：', { joinResponse });
 
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.JoinRoom,
@@ -896,7 +921,7 @@ export class ProtocolHandler {
         this.logger.info('单人房首次开始，发送确认消息', { roomId: room.id });
         this.broadcastMessage(room, {
           type: 'Chat',
-          user: 706786, // System User
+          user: -1, // System User
           content: '房间只有你一个人 如果确定开始游戏请再次点击开始游戏',
         });
       } else {
@@ -1512,8 +1537,8 @@ export class ProtocolHandler {
     for (const [id, playerInfo] of room.players.entries()) {
       users.set(id, playerInfo.user);
     }
-
-    users.set(-1, { id: -1, name: 'FunXLink', monitor: true });
+    // Add special server user info (ID -1, name from config)
+    users.set(-1, { id: -1, name: this.serverName, monitor: true });
 
     const player = room.players.get(userId);
 

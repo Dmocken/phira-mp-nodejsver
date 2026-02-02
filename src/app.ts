@@ -28,9 +28,9 @@ export const createApplication = (overrides?: Partial<ServerConfig>): Applicatio
   const authLogger = new ConsoleLogger('认证', logLevel);
   const protocolLogger = new ConsoleLogger('协议', logLevel);
 
-  const roomManager = new InMemoryRoomManager(roomLogger);
+  const roomManager = new InMemoryRoomManager(roomLogger, config.roomSize);
   const authService = new PhiraAuthService(config.phiraApiUrl, authLogger);
-  const protocolHandler = new ProtocolHandler(roomManager, authService, protocolLogger);
+  const protocolHandler = new ProtocolHandler(roomManager, authService, protocolLogger, config.serverName);
   const networkServer = new NetworkServer(config, logger, protocolHandler);
 
   return {
