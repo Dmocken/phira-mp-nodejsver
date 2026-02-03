@@ -26,7 +26,7 @@ function connectWebSocket() {
 
     socket.onopen = () => {
         console.log('WebSocket connection established');
-        connectionStatus.textContent = 'Connected';
+        connectionStatus.textContent = I18n.t('common.connected');
         connectionStatus.className = 'connection-status connected';
         checkAdminStatus(); // Check admin status once connected
     };
@@ -48,7 +48,7 @@ function connectWebSocket() {
 
     socket.onclose = () => {
         console.log('WebSocket connection closed. Reconnecting in 3 seconds...');
-        connectionStatus.textContent = 'Disconnected';
+        connectionStatus.textContent = I18n.t('common.disconnected');
         connectionStatus.className = 'connection-status disconnected';
         setTimeout(connectWebSocket, 3000);
     };
@@ -60,7 +60,7 @@ function connectWebSocket() {
 
 function updateTotalPlayers(count) {
     currentTotalPlayers = count;
-    const content = `<strong>Total Players Online:</strong> ${count}`;
+    const content = `<strong>${I18n.t('common.total_players')}:</strong> ${count}`;
     if (isAdmin) {
         totalPlayersDiv.innerHTML = `<a href="/players.html">${content}</a><a href="/logout" class="logout-icon" title="Logout">&#10145;&#65039;</a>`;
     } else {
@@ -73,7 +73,12 @@ function renderRooms(rooms) {
     let totalPlayers = 0;
 
     if (rooms.length === 0) {
-        roomList.innerHTML = '<p>No active rooms.</p>';
+        roomList.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">🏠</div>
+                <div class="empty-state-text">${I18n.t('index.no_rooms')}</div>
+            </div>
+        `;
     } else {
         rooms.forEach(room => {
             totalPlayers += room.playerCount;
@@ -82,16 +87,16 @@ function renderRooms(rooms) {
 
             const lockIcon = room.locked ? '&#128274;' : '&#128275;';
             const lockStatusClass = room.locked ? 'locked-status' : 'unlocked-status';
-            const roomMode = room.cycle ? '循环模式' : '普通模式';
+            const roomMode = room.cycle ? I18n.t('room.mode_cycle') : I18n.t('room.mode_normal');
 
             roomCard.innerHTML = `
-                <h2>房间号#${room.id}</h2>
+                <h2>${I18n.t('room.room_no')}#${room.id}</h2>
                 <div class="room-info">
-                    <p>Mode: <span style="font-weight:bold; color:#3498db;">${roomMode}</span></p>
-                    <p>Host: <span>${room.ownerName} (ID: ${room.ownerId})</span></p>
-                    <p>Players: <span>${room.playerCount} / ${room.maxPlayers}</span></p>
-                    <p>Status: <span>${room.state.type}</span></p>
-                    <p>Locked: <span class="${lockStatusClass}">${lockIcon}</span></p>
+                    <p>${I18n.t('room.mode')}: <span class="room-mode-tag">${roomMode}</span></p>
+                    <p>${I18n.t('room.host')}: <span style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${room.ownerName} (ID: ${room.ownerId})">${room.ownerName} (ID: ${room.ownerId})</span></p>
+                    <p>${I18n.t('room.players')}: <span>${room.playerCount} / ${room.maxPlayers}</span></p>
+                    <p>${I18n.t('room.status')}: <span>${room.state.type}</span></p>
+                    <p>${I18n.t('room.locked')}: <span class="${lockStatusClass}">${lockIcon}</span></p>
                 </div>
             `;
             
@@ -107,4 +112,8 @@ function renderRooms(rooms) {
 }
 
 // Initial connection
-connectWebSocket();
+if (I18n.isReady) {
+    connectWebSocket();
+} else {
+    document.addEventListener('i18nReady', connectWebSocket);
+}

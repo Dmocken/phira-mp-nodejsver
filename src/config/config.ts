@@ -46,6 +46,11 @@ export interface ServerConfig {
   sessionSecret: string;
   turnstileSiteKey?: string;
   turnstileSecretKey?: string;
+  captchaProvider: 'cloudflare' | 'aliyun' | 'none';
+  aliyunAccessKeyId?: string;
+  aliyunAccessKeySecret?: string;
+  aliyunCaptchaSceneId?: string;
+  aliyunCaptchaPrefix?: string;
 }
 
 const defaultConfig: ServerConfig = {
@@ -71,6 +76,7 @@ const defaultConfig: ServerConfig = {
   adminPhiraId: [],
   ownerPhiraId: [],
   sessionSecret: 'a-very-insecure-secret-change-it',
+  captchaProvider: 'none',
 };
 
 const parseBoolean = (value: string | undefined, fallback: boolean): boolean => {
@@ -96,6 +102,13 @@ export const env = {
   webPort: parseInt(process.env.WEB_PORT || '8080', 10),
   enableWebServer: parseBoolean(process.env.ENABLE_WEB_SERVER, true),
   
+  // 验证码配置
+  captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase() as 'cloudflare' | 'aliyun' | 'none',
+  aliyunAccessKeyId: process.env.ALIYUN_ACCESS_KEY_ID,
+  aliyunAccessKeySecret: process.env.ALIYUN_ACCESS_KEY_SECRET,
+  aliyunCaptchaSceneId: process.env.ALIYUN_CAPTCHA_SCENE_ID,
+  aliyunCaptchaPrefix: process.env.ALIYUN_CAPTCHA_PREFIX,
+
   // 房间过滤配置
   enablePubWeb: parseBoolean(process.env.ENABLE_PUB_WEB, false),
   pubPrefix: process.env.PUB_PREFIX || 'pub',
@@ -168,6 +181,11 @@ export const createServerConfig = (overrides: Partial<ServerConfig> = {}): Serve
     sessionSecret: process.env.SESSION_SECRET ?? defaultConfig.sessionSecret,
     turnstileSiteKey: process.env.TURNSTILE_SITE_KEY,
     turnstileSecretKey: process.env.TURNSTILE_SECRET_KEY,
+    captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase() as 'cloudflare' | 'aliyun' | 'none',
+    aliyunAccessKeyId: process.env.ALIYUN_ACCESS_KEY_ID?.trim(),
+    aliyunAccessKeySecret: process.env.ALIYUN_ACCESS_KEY_SECRET?.trim(),
+    aliyunCaptchaSceneId: process.env.ALIYUN_CAPTCHA_SCENE_ID?.trim(),
+    aliyunCaptchaPrefix: process.env.ALIYUN_CAPTCHA_PREFIX?.trim(),
   };
 
   return {

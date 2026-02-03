@@ -1,23 +1,77 @@
-
 document.addEventListener('DOMContentLoaded', () => {
     const roomName = document.getElementById('room-name');
     const roomDetails = document.getElementById('room-details');
     const connectionStatus = document.getElementById('connection-status');
-    const totalPlayersDiv = document.getElementById('total-players'); // Add this
+    const totalPlayersDiv = document.getElementById('total-players');
     
+    // Global error handler to catch rendering issues
+    window.onerror = function(msg, url, line) {
+        if (roomName) roomName.textContent = 'Error: ' + msg + ' (Line: ' + line + ')';
+        return false;
+    };
+
     const params = new URLSearchParams(window.location.search);
     const roomId = params.get('id');
     let socket;
-    let isAdmin = false; // RESTORED
+    let isAdmin = false;
+    let currentTotalPlayers = 0;
     
-    // State for Other Rooms
     let lastDetails = null;
     let currentOtherRooms = [];
-    
+    let lastMessageCount = -1;
+    let announcementTimeout = null;
+
+    function showAnnouncement(m) {
+        try {
+            const popup = document.getElementById('announcement-popup');
+            if (!popup) return;
+
+            if (announcementTimeout) {
+                clearTimeout(announcementTimeout);
+                announcementTimeout = null;
+            }
+
+            let content = '';
+            const uName = m.userName || I18n.t('common.unknown');
+            switch (m.type) {
+                case 'Chat': content = `${uName}: ${m.content}`; break;
+                case 'JoinRoom': content = I18n.t('room.events.join', { user: m.name || uName }); break;
+                case 'LeaveRoom': content = I18n.t('room.events.leave', { user: m.name || uName }); break;
+                case 'CreateRoom': content = I18n.t('room.events.create', { user: uName }); break;
+                case 'NewHost': content = I18n.t('room.events.new_host', { user: uName }); break;
+                case 'SelectChart': content = I18n.t('room.events.select_chart', { name: m.name, id: m.id }); break;
+                case 'GameStart': content = I18n.t('room.events.game_start'); break;
+                case 'Ready': content = I18n.t('room.events.ready', { user: uName }); break;
+                case 'CancelReady': content = I18n.t('room.events.cancel_ready', { user: uName }); break;
+                case 'StartPlaying': content = I18n.t('room.events.start_playing'); break;
+                case 'Played':
+                    content = I18n.t('room.events.played', { 
+                        user: uName, 
+                        score: (m.score || 0).toLocaleString(), 
+                        acc: ((m.accuracy || 0) * 100).toFixed(2) 
+                    });
+                    break;
+                case 'Abort': content = I18n.t('room.events.abort', { user: uName }); break;
+                case 'GameEnd': content = I18n.t('room.events.game_end'); break;
+                case 'LockRoom': content = I18n.t('room.events.lock_room', { status: m.lock ? I18n.t('room.events.lock') : I18n.t('room.events.unlock') }); break;
+                case 'CycleRoom': content = I18n.t('room.events.cycle_room', { status: m.cycle ? I18n.t('room.events.on') : I18n.t('room.events.off') }); break;
+                default: content = `${m.type} event`;
+            }
+
+            popup.textContent = content;
+            popup.classList.add('show');
+            popup.style.opacity = '1';
+
+            announcementTimeout = setTimeout(() => {
+                popup.style.opacity = '0';
+                setTimeout(() => { popup.classList.remove('show'); }, 300);
+                announcementTimeout = null;
+            }, 3000);
+        } catch (e) { console.error('Announcement Error:', e); }
+    }
+
     window.refreshOtherRooms = () => {
         if (!currentOtherRooms || currentOtherRooms.length === 0) return;
-        // Shuffle currentOtherRooms in place or just create a new random subset logic
-        // Simple shuffle
         for (let i = currentOtherRooms.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [currentOtherRooms[i], currentOtherRooms[j]] = [currentOtherRooms[j], currentOtherRooms[i]];
@@ -25,233 +79,130 @@ document.addEventListener('DOMContentLoaded', () => {
         if (lastDetails) renderRoomDetails(lastDetails);
     };
 
+    // Admin Actions
     window.sendAdminServerMessage = async () => {
-        const content = prompt('请输入发送的消息：');
+        const content = prompt(I18n.currentLang === 'zh' ? '请输入发送的消息：' : 'Enter message:');
         if (!content || !content.trim()) return;
-
         try {
-            const response = await fetch('/api/admin/server-message', {
+            await fetch('/api/admin/server-message', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ roomId, content })
             });
-            if (!response.ok) throw new Error('Failed to send message');
-            console.log('Admin message sent successfully');
-        } catch (error) {
-            alert('发送失败: ' + error.message);
-        }
+        } catch (e) { alert('Failed'); }
     };
 
     window.kickPlayerByAdmin = async () => {
-        const userIdStr = prompt('请输入玩家ID：');
-        if (!userIdStr || !userIdStr.trim()) return;
-        const userId = parseInt(userIdStr.trim(), 10);
-        if (isNaN(userId)) {
-            alert('请输入有效的数字ID');
-            return;
-        }
-
+        const id = prompt(I18n.currentLang === 'zh' ? '请输入玩家ID：' : 'Enter Player ID:');
+        if (!id) return;
         try {
-            const response = await fetch('/api/admin/kick-player', {
+            await fetch('/api/admin/kick-player', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId })
+                body: JSON.stringify({ userId: parseInt(id) })
             });
-            const result = await response.json();
-            if (!response.ok || !result.success) throw new Error('踢出失败，玩家可能不在房间中');
-            console.log('Player kicked successfully');
-        } catch (error) {
-            alert('操作失败: ' + error.message);
-        }
+        } catch (e) { alert('Failed'); }
     };
 
     window.forceStartByAdmin = async () => {
-        if (!confirm('是否要强制开启游戏？')) return;
-
+        if (!confirm(I18n.currentLang === 'zh' ? '确定要强制开启游戏？' : 'Force start game?')) return;
         try {
-            const response = await fetch('/api/admin/force-start', {
+            await fetch('/api/admin/force-start', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ roomId })
             });
-            const result = await response.json();
-            if (!response.ok || !result.success) throw new Error('强制开始失败，房间状态可能不正确');
-            console.log('Game force started successfully');
-        } catch (error) {
-            alert('操作失败: ' + error.message);
-        }
+        } catch (e) { alert('Failed'); }
     };
 
     window.toggleRoomLockByAdmin = async () => {
-        if (!confirm('你确定要锁定/解锁此房间吗？')) return;
-
         try {
-            const response = await fetch('/api/admin/toggle-lock', {
+            await fetch('/api/admin/toggle-lock', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ roomId })
             });
-            const result = await response.json();
-            if (!response.ok || !result.success) throw new Error('切换锁定状态失败');
-            console.log('Room lock toggled successfully');
-        } catch (error) {
-            alert('操作失败: ' + error.message);
-        }
+        } catch (e) { alert('Failed'); }
     };
 
     window.setMaxPlayersByAdmin = async () => {
-        const countStr = prompt('请输入房间最大人数：');
-        if (!countStr || !countStr.trim()) return;
-        const maxPlayers = parseInt(countStr.trim(), 10);
-        if (isNaN(maxPlayers) || maxPlayers <= 0) {
-            alert('请输入有效的正整数');
-            return;
-        }
-
+        const count = prompt(I18n.currentLang === 'zh' ? '请输入最大人数：' : 'Enter max players:');
+        if (!count) return;
         try {
-            const response = await fetch('/api/admin/set-max-players', {
+            await fetch('/api/admin/set-max-players', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ roomId, maxPlayers })
+                body: JSON.stringify({ roomId, maxPlayers: parseInt(count) })
             });
-            const result = await response.json();
-            if (!response.ok || !result.success) throw new Error('修改失败');
-            console.log('Max players updated successfully');
-        } catch (error) {
-            alert('操作失败: ' + error.message);
-        }
+        } catch (e) { alert('Failed'); }
     };
 
     window.closeRoomByAdmin = async () => {
-        if (!confirm('确定要强制关闭房间吗？')) return;
-
+        if (!confirm(I18n.currentLang === 'zh' ? '确定关闭房间？' : 'Close room?')) return;
         try {
-            const response = await fetch('/api/admin/close-room', {
+            await fetch('/api/admin/close-room', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ roomId })
             });
-            const result = await response.json();
-            if (!response.ok || !result.success) throw new Error('关闭失败');
-            console.log('Room closed successfully');
-            window.location.href = '/'; // Redirect to home since room is gone
-        } catch (error) {
-            alert('操作失败: ' + error.message);
-        }
+            window.location.href = '/';
+        } catch (e) { alert('Failed'); }
     };
 
     window.toggleRoomModeByAdmin = async () => {
-        if (!confirm('确定要更改房间的模式吗？')) return;
-
         try {
-            const response = await fetch('/api/admin/toggle-mode', {
+            await fetch('/api/admin/toggle-mode', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ roomId })
             });
-            const result = await response.json();
-            if (!response.ok || !result.success) throw new Error('更改模式失败');
-            console.log('Room mode toggled successfully');
-        } catch (error) {
-            alert('操作失败: ' + error.message);
-        }
+        } catch (e) { alert('Failed'); }
     };
 
     window.manageBlacklistByAdmin = async () => {
         try {
-            // 1. Fetch current blacklist
-            const getResp = await fetch(`/api/admin/room-blacklist?roomId=${roomId}`);
-            const getData = await getResp.json();
-            const currentList = getData.blacklist || [];
-
-            // 2. Show prompt
-            const input = prompt('房间黑名单 (用户ID，英文逗号隔开)：', currentList.join(','));
-            if (input === null) return; // Cancelled
-
-            // 3. Parse and Save
-            const userIds = input.split(',')
-                .map(id => parseInt(id.trim(), 10))
-                .filter(id => !isNaN(id));
-
-            const saveResp = await fetch('/api/admin/set-room-blacklist', {
+            const res = await fetch(`/api/admin/room-blacklist?roomId=${roomId}`);
+            const data = await res.json();
+            const input = prompt('Blacklist (ID,ID):', (data.blacklist || []).join(','));
+            if (input === null) return;
+            const userIds = input.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+            await fetch('/api/admin/set-room-blacklist', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ roomId, userIds })
             });
-            const result = await saveResp.json();
-            if (!saveResp.ok || !result.success) throw new Error('保存失败');
-            
-            console.log('Blacklist updated successfully');
-            // Re-fetch room details to see if anyone was kicked
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ type: 'getRoomDetails', payload: { roomId } }));
-            }
-        } catch (error) {
-            alert('操作失败: ' + error.message);
-        }
+        } catch (e) { alert('Failed'); }
     };
 
     window.manageWhitelistByAdmin = async () => {
         try {
-            // 1. Fetch current whitelist
-            const getResp = await fetch(`/api/admin/room-whitelist?roomId=${roomId}`);
-            const getData = await getResp.json();
-            const currentList = getData.whitelist || [];
-
-            // 2. Show prompt
-            const input = prompt('房间白名单 (用户ID，英文逗号隔开)：', currentList.join(','));
-            if (input === null) return; // Cancelled
-
-            // 3. Parse and Save
-            const userIds = input.split(',')
-                .map(id => parseInt(id.trim(), 10))
-                .filter(id => !isNaN(id));
-
-            const saveResp = await fetch('/api/admin/set-room-whitelist', {
+            const res = await fetch(`/api/admin/room-whitelist?roomId=${roomId}`);
+            const data = await res.json();
+            const input = prompt('Whitelist (ID,ID):', (data.whitelist || []).join(','));
+            if (input === null) return;
+            const userIds = input.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+            await fetch('/api/admin/set-room-whitelist', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ roomId, userIds })
             });
-            const result = await saveResp.json();
-            if (!saveResp.ok || !result.success) throw new Error('保存失败');
-            
-            console.log('Whitelist updated successfully');
-            // Re-fetch room details to see if anyone was kicked
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ type: 'getRoomDetails', payload: { roomId } }));
-            }
-        } catch (error) {
-            alert('操作失败: ' + error.message);
-        }
+        } catch (e) { alert('Failed'); }
     };
 
-    if (!roomId) {
-        roomName.textContent = 'Error: No Room ID specified';
-        return;
-    }
-
-    // Add Admin Check
     async function checkAdminStatus() {
         try {
             const response = await fetch('/check-auth');
             const data = await response.json();
-            isAdmin = data.isAdmin;
-            console.log('Admin status:', isAdmin);
-        } catch (error) {
-            console.error('Failed to check admin status:', error);
-            isAdmin = false;
-        }
+            isAdmin = !!data.isAdmin;
+        } catch (error) { isAdmin = false; }
         updateTotalPlayers(currentTotalPlayers);
-        // Refresh UI with new admin status if data is already present
-        if (lastDetails) {
-            renderRoomDetails(lastDetails);
-        }
+        if (lastDetails) renderRoomDetails(lastDetails);
     }
 
-    // Add Update Logic
     function updateTotalPlayers(count) {
         currentTotalPlayers = count;
-        const content = `<strong>Total Players Online:</strong> ${count}`;
+        if (!totalPlayersDiv) return;
+        const content = `<strong>${I18n.t('common.total_players')}:</strong> ${count}`;
         if (isAdmin) {
             totalPlayersDiv.innerHTML = `<a href="/players.html">${content}</a><a href="/logout" class="logout-icon" title="Logout">&#10145;&#65039;</a>`;
         } else {
@@ -260,542 +211,307 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function connectWebSocket() {
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${wsProtocol}//${window.location.host}`;
+        try {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            socket = new WebSocket(`${protocol}//${window.location.host}`);
 
-        socket = new WebSocket(wsUrl);
-
-        socket.onopen = () => {
-            console.log('WebSocket connection established for room details');
-            connectionStatus.textContent = 'Connected';
-            connectionStatus.className = 'connection-status connected';
-            checkAdminStatus(); // Check admin on connect
-
-            // Request details for the specific room
-            const message = {
-                type: 'getRoomDetails',
-                payload: { roomId: roomId }
+            socket.onopen = () => {
+                if (connectionStatus) {
+                    connectionStatus.textContent = I18n.t('common.connected');
+                    connectionStatus.className = 'connection-status connected';
+                }
+                checkAdminStatus();
+                socket.send(JSON.stringify({ type: 'getRoomDetails', payload: { roomId } }));
             };
-            socket.send(JSON.stringify(message));
-        };
 
-        socket.onmessage = (event) => {
-            try {
-                const message = JSON.parse(event.data);
-                if (message.type === 'roomDetails') {
-                    console.log('Received room details:', message.payload);
-                    renderRoomDetails(message.payload);
-                }
-                // Handle serverStats
-                if (message.type === 'serverStats') {
-                    updateTotalPlayers(message.payload.totalPlayers);
-                }
-                // The main list update can also trigger a re-fetch for simplicity
-                if (message.type === 'roomList') {
-                     const message = {
-                        type: 'getRoomDetails',
-                        payload: { roomId: roomId }
-                    };
-                    socket.send(JSON.stringify(message));
-                }
-            } catch (error) {
-                console.error('Error parsing room data:', error);
-            }
-        };
+            socket.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.type === 'roomDetails') renderRoomDetails(message.payload);
+                    else if (message.type === 'serverStats') updateTotalPlayers(message.payload.totalPlayers);
+                    else if (message.type === 'roomList') socket.send(JSON.stringify({ type: 'getRoomDetails', payload: { roomId } }));
+                } catch (error) { console.error('WS Message Error:', error); }
+            };
 
-        socket.onclose = () => {
-            console.log('WebSocket connection closed. Reconnecting in 3 seconds...');
-            connectionStatus.textContent = 'Disconnected';
-            connectionStatus.className = 'connection-status disconnected';
-            setTimeout(connectWebSocket, 3000);
-        };
+            socket.onclose = () => {
+                if (connectionStatus) {
+                    connectionStatus.textContent = I18n.t('common.disconnected');
+                    connectionStatus.className = 'connection-status disconnected';
+                }
+                setTimeout(connectWebSocket, 3000);
+            };
 
-        socket.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
+            socket.onerror = (err) => {
+                console.error('WS Socket Error:', err);
+            };
+        } catch (e) { console.error('WS Connection Error:', e); }
     }
 
     function renderRoomDetails(details) {
-        lastDetails = details;
-        if (!details) {
-            roomName.textContent = `Error: Room "${roomId}" not found`;
-            roomDetails.innerHTML = '';
-            return;
-        }
-        
-        // Sync Other Rooms data without reshuffling if possible
-        if (details.otherRooms) {
-            const newRoomIds = new Set(details.otherRooms.map(r => r.id));
-            const currentIds = new Set(currentOtherRooms.map(r => r.id));
-            
-            // If sets are different, we must update
-            let needsUpdate = newRoomIds.size !== currentIds.size;
-            if (!needsUpdate) {
-                for (let id of newRoomIds) if (!currentIds.has(id)) needsUpdate = true;
+        try {
+            if (!details) {
+                roomName.textContent = `${I18n.t('common.error')}: Room "${roomId}" not found`;
+                roomDetails.innerHTML = '';
+                return;
             }
-            
-            if (needsUpdate || currentOtherRooms.length === 0) {
-                currentOtherRooms = [...details.otherRooms];
-                // Initial shuffle
-                for (let i = currentOtherRooms.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [currentOtherRooms[i], currentOtherRooms[j]] = [currentOtherRooms[j], currentOtherRooms[i]];
+
+            // Announcement logic
+            if (details.messages) {
+                const currentCount = details.messages.length;
+                if (lastMessageCount !== -1 && currentCount > lastMessageCount) {
+                    for (let i = lastMessageCount; i < currentCount; i++) {
+                        showAnnouncement(details.messages[i]);
+                    }
                 }
-            } else {
-                // Update properties of existing rooms in currentOtherRooms (e.g. player count)
-                currentOtherRooms = currentOtherRooms.map(cr => {
-                    const fresh = details.otherRooms.find(r => r.id === cr.id);
-                    return fresh || cr; // Should exist because sets match
-                });
+                lastMessageCount = currentCount;
             }
-        }
 
-        roomName.textContent = `Room: ${details.name}`;
-
-        const lockIcon = details.locked ? '&#128274;' : '&#128275;';
-        const lockStatusClass = details.locked ? 'locked-status' : 'unlocked-status';
-
-        const chartName = details.selectedChart ? details.selectedChart.name : 'Not selected';
-        const chartLevel = details.selectedChart ? details.selectedChart.level : 'N/A';
-        const chartLink = details.selectedChart ? `<a href="https://phira.moe/chart/${details.selectedChart.id}" target="_blank">${details.selectedChart.id}</a>` : 'N/A';
-        
-        // Extended chart info if available (assuming backend passes it through)
-        const chartDifficulty = details.selectedChart?.difficulty ?? 'N/A';
-        const chartCharter = details.selectedChart?.charter ?? 'N/A';
-        const chartComposer = details.selectedChart?.composer ?? 'N/A';
-        const chartFile = details.selectedChart?.file;
-        const chartIllustrationUrl = details.selectedChart?.illustration;
-        const uploader = details.selectedChart?.uploaderInfo;
-
-        // Rating Logic
-        const ratingVal = details.selectedChart?.rating ?? 0;
-        const ratingCount = details.selectedChart?.ratingCount ?? 0;
-        // Convert 0-1 scale to 0-5 scale
-        const ratingNum = ratingVal * 5;
-        const ratingDisplay = ratingNum.toFixed(2);
-        
-        // Generate stars based on decimals
-        const wholeStars = Math.floor(ratingNum);
-        const decimalPart = ratingNum - wholeStars;
-        const firstDecimalDigit = Math.floor(decimalPart * 10);
-
-        let starsHtml = '';
-        for (let i = 1; i <= 5; i++) {
-            if (i <= wholeStars) {
-                // Fully filled star
-                starsHtml += '<span class="star-filled">&#9733;</span>';
-            } else if (i === wholeStars + 1) {
-                // Fractional star based on the first decimal digit
-                if (firstDecimalDigit > 8) {
-                    starsHtml += '<span class="star-filled">&#9733;</span>';
-                } else if (firstDecimalDigit > 4) {
-                    starsHtml += '<span class="star-half">&#9733;</span>';
+            lastDetails = details;
+            
+            // Sync Other Rooms
+            if (details.otherRooms) {
+                const newIds = new Set(details.otherRooms.map(r => r.id));
+                const currentIds = new Set(currentOtherRooms.map(r => r.id));
+                let needsUpdate = newIds.size !== currentIds.size;
+                if (!needsUpdate) for (let id of newIds) if (!currentIds.has(id)) needsUpdate = true;
+                
+                if (needsUpdate || currentOtherRooms.length === 0) {
+                    currentOtherRooms = [...details.otherRooms];
+                    for (let i = currentOtherRooms.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [currentOtherRooms[i], currentOtherRooms[j]] = [currentOtherRooms[j], currentOtherRooms[i]];
+                    }
                 } else {
-                    starsHtml += '<span class="star-empty">&#9733;</span>';
+                    currentOtherRooms = currentOtherRooms.map(cr => details.otherRooms.find(r => r.id === cr.id) || cr);
                 }
-            } else {
-                // Empty star
-                starsHtml += '<span class="star-empty">&#9733;</span>';
             }
-        }
 
-        const chartInfoHtml = `
-            <div class="chart-container">
-                ${details.selectedChart && chartIllustrationUrl ? `
-                    <div class="chart-illustration">
-                        <a href="https://phira.moe/chart/${details.selectedChart.id}" target="_blank">
-                            <img src="${chartIllustrationUrl}" alt="Illustration">
-                        </a>
-                    </div>` : '<div class="chart-illustration" style="background:#eee; height:200px; display:flex; align-items:center; justify-content:center; color:#999; border-radius:8px;">No Illustration</div>'}
-                <div class="chart-details-box">
-                    <h4>Chart Info</h4>
-                    <p><strong>Name:</strong> ${details.selectedChart ? chartName : 'Not Selected'}</p>
-                    <p><strong>ID:</strong> ${details.selectedChart ? details.selectedChart.id : 'N/A'}</p>
-                    <p><strong>Level:</strong> ${details.selectedChart ? chartLevel : 'N/A'}</p>
-                    <p><strong>Difficulty:</strong> ${details.selectedChart ? chartDifficulty : 'N/A'}</p>
-                    <p><strong>Charter:</strong> ${details.selectedChart ? chartCharter : 'N/A'}</p>
-                    <p><strong>Composer:</strong> ${details.selectedChart ? chartComposer : 'N/A'}</p>
-                    <p><strong>Rating:</strong> <span title="${ratingCount} ratings">${starsHtml} <span style="font-size:0.9em; color:#7f8c8d;">(${ratingDisplay} / 5.00)</span></span></p>
-                </div>
-                ${chartFile ? `
-                    <a href="${chartFile}" class="download-button" target="_blank">
-                        &#128229; Download
-                    </a>
-                ` : `
-                    <a href="javascript:void(0)" class="download-button placeholder" onclick="alert('杂鱼~ 你还没有选择任何谱面哦喵！')">
-                        &#128229; Download
-                    </a>
-                `}
-            </div>
-        `;
+            roomName.textContent = `${I18n.t('room.room_no')}#${details.id || roomId}`;
+            const lockIcon = details.locked ? '&#128274;' : '&#128275;';
+            const lockStatusClass = details.locked ? 'locked-status' : 'unlocked-status';
+            const roomMode = details.cycle ? I18n.t('room.mode_cycle') : I18n.t('room.mode_normal');
 
-        // Other Rooms HTML
-        const displayRooms = currentOtherRooms.slice(0, 5);
-        const otherRoomsList = displayRooms.length > 0 ? displayRooms.map(r => `
-            <a href="room.html?id=${r.id}" class="other-room-item">
-                <span class="other-room-id">#${r.id}</span>
-                <span class="other-room-name">${r.name}</span>
-                <span class="other-room-count">${r.playerCount}/${r.maxPlayers}</span>
-            </a>
-        `).join('') : '<p style="color:#aaa; font-style:italic; padding:20px; text-align:center;">No other active rooms</p>';
+            // Chart Stars Calculation
+            const ratingVal = details.selectedChart?.rating ?? 0;
+            const ratingNum = ratingVal * 5;
+            const ratingDisplay = ratingNum.toFixed(2);
+            const wholeStars = Math.floor(ratingNum);
+            const firstDecimal = Math.floor((ratingNum - wholeStars) * 10);
 
-        const otherRoomsHtml = `
-            <div class="detail-card">
-                <h3>Other Rooms</h3>
-                <div class="other-rooms-scroll">
-                    <div class="other-rooms-list">
-                        ${otherRoomsList}
+            let starsHtml = '';
+            for (let i = 1; i <= 5; i++) {
+                if (i <= wholeStars) starsHtml += '<span class="star-filled">&#9733;</span>';
+                else if (i === wholeStars + 1) {
+                    if (firstDecimal > 7) starsHtml += '<span class="star-filled">&#9733;</span>';
+                    else if (firstDecimal >= 3) starsHtml += '<span class="star-half">&#9733;</span>';
+                    else starsHtml += '<span class="star-empty">&#9733;</span>';
+                } else starsHtml += '<span class="star-empty">&#9733;</span>';
+            }
+
+            const chartInfoHtml = `
+                <div class="chart-container">
+                    ${details.selectedChart?.illustration ? `
+                        <div class="chart-illustration">
+                            <a href="https://phira.moe/chart/${details.selectedChart.id}" target="_blank">
+                                <img src="${details.selectedChart.illustration}" alt="Illustration">
+                            </a>
+                        </div>` : `<div class="chart-illustration" style="background:var(--muted-bg); height:200px; display:flex; align-items:center; justify-content:center; color:var(--text-muted); border-radius:8px;">${I18n.t('room.no_illustration')}</div>`}
+                    <div class="chart-details-box">
+                        <h4>${I18n.t('room.chart_info')}</h4>
+                        <p><strong>Name:</strong> <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;" title="${details.selectedChart?.name || ''}">${details.selectedChart?.name || I18n.t('room.not_selected')}</span></p>
+                        <p><strong>${I18n.t('room.id')}:</strong> ${details.selectedChart?.id || 'N/A'}</p>
+                        <p><strong>${I18n.t('room.level')}:</strong> ${details.selectedChart?.level || 'N/A'}</p>
+                        <p><strong>${I18n.t('room.difficulty')}:</strong> ${details.selectedChart?.difficulty || 'N/A'}</p>
+                        <p><strong>${I18n.t('room.charter')}:</strong> <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;" title="${details.selectedChart?.charter || ''}">${details.selectedChart?.charter || 'N/A'}</span></p>
+                        <p><strong>${I18n.t('room.composer')}:</strong> <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;" title="${details.selectedChart?.composer || ''}">${details.selectedChart?.composer || 'N/A'}</span></p>
+                        <p><strong>${I18n.t('room.rating')}:</strong> <span>${starsHtml} <span style="font-size:0.9em; color:var(--text-muted);">(${ratingDisplay} / 5.00)</span></span></p>
                     </div>
+                    <a href="${details.selectedChart?.file || 'javascript:void(0)'}" class="download-button ${!details.selectedChart?.file ? 'placeholder' : ''}" ${details.selectedChart?.file ? 'target="_blank"' : 'onclick="alert(\'杂鱼~ 你还没有选择任何谱面哦喵！\')"'} >&#128229; ${I18n.t('room.download')}</a>
                 </div>
-                ${currentOtherRooms.length > 5 ? `
-                    <button class="refresh-rooms-btn" onclick="window.refreshOtherRooms()">
-                        &#128260; 换一批
-                    </button>
-                ` : '<div style="height: 40px;"></div>'} 
-            </div>
-        `;
-
-        const sortedPlayers = [...details.players].sort((a, b) => {
-            // 1. Room Owner always first
-            if (a.id === details.ownerId) return -1;
-            if (b.id === details.ownerId) return 1;
-
-            // 2. Bot always last
-            if (a.id === -1) return 1;
-            if (b.id === -1) return -1;
-
-            // 3. Priority: Server Owner > Admin > Regular
-            const getWeight = (p) => {
-                if (p.isOwner) return 2;
-                if (p.isAdmin) return 1;
-                return 0;
-            };
-
-            const weightA = getWeight(a);
-            const weightB = getWeight(b);
-
-            if (weightA !== weightB) {
-                return weightB - weightA; // Higher weight comes first
-            }
-
-            return 0;
-        });
-
-        const playersHtml = sortedPlayers.map(p => {
-            const isServer = p.id === -1;
-            const isOwner = p.id === details.ownerId;
-            const profileLink = isServer ? '#' : `https://phira.moe/user/${p.id}`;
-            const targetAttr = isServer ? '' : 'target="_blank"';
-            
-            const readyStatus = p.isReady ? 'Ready' : 'Not Ready';
-            const statusClass = isServer ? '' : (p.isReady ? 'status-ready' : 'status-not-ready');
-            const statusText = isServer ? 'Bot' : readyStatus;
-            
-            let nameClass = 'player-name';
-            if (isServer) nameClass += ' name-bot';
-            else if (isOwner) nameClass += ' name-owner';
-
-            const avatarUrl = p.avatar || 'https://api.phira.cn/files/6ad662de-b505-4725-a7ef-72d65f32b404';
-
-            // Generate Prefix
-            let prefixHtml = '';
-            if (isServer) {
-                prefixHtml = '<span class="name-prefix prefix-bot">[Bot]</span> ';
-            } else if (p.isOwner) {
-                prefixHtml = '<span class="name-prefix prefix-owner">[Owner]</span> ';
-            } else if (p.isAdmin) {
-                prefixHtml = '<span class="name-prefix prefix-admin">[Admin]</span> ';
-            } else {
-                prefixHtml = '<span class="name-prefix prefix-player">[Player]</span> ';
-            }
-
-            return `
-            <li class="player-item ${isOwner ? 'owner' : ''} ${p.isReady ? 'ready' : ''}">
-                <div class="player-info-left">
-                    <img src="${avatarUrl}" class="player-avatar-small" alt="Avatar">
-                    <a class="${nameClass}" href="${profileLink}" ${targetAttr}>${prefixHtml}${p.name} ${isServer ? '' : `(ID: ${p.id})`}</a>
-                </div>
-                <span class="player-status ${statusClass}">${statusText}</span>
-            </li>
             `;
-        }).join('');
 
-        // Find owner name
-        const owner = details.players.find(p => p.id === details.ownerId);
-        const ownerName = owner ? owner.name : 'Unknown';
-        const ownerIdDisplay = owner ? `(ID: ${owner.id})` : '';
-
-        // Handle uploader display more defensively
-        const uploaderId = details.selectedChart?.uploader;
-        const uploaderInfo = details.selectedChart?.uploaderInfo;
-        
-        let uploaderHtml = '';
-        if (uploaderInfo) {
-            uploaderHtml = `
+            // Host Info
+            const host = (details.players || []).find(p => p.id === details.ownerId);
+            const hostHtml = `
                 <div class="detail-card">
-                    <h3>Chart Uploader</h3>
+                    <h3>${I18n.t('room.host_info')}</h3>
                     <div class="uploader-info">
-                        <a href="https://phira.moe/user/${uploaderInfo.id}" target="_blank" style="text-decoration:none; color:inherit;">
-                            <img src="${uploaderInfo.avatar}" alt="${uploaderInfo.name}" class="uploader-avatar">
+                        <a href="https://phira.moe/user/${details.ownerId}" target="_blank" style="text-decoration:none; color:inherit;">
+                            <img src="${host?.avatar || 'https://phira.5wyxi.com/files/6ad662de-b505-4725-a7ef-72d65f32b404'}" class="uploader-avatar">
                             <div class="uploader-text">
-                                <p class="uploader-name">${uploaderInfo.name}</p>
-                                <p class="uploader-rks">RKS: ${uploaderInfo.rks.toFixed(2)}</p>
-                                <p class="uploader-bio">${uploaderInfo.bio || '作者没有设置简介'}</p>
-                                <p class="uploader-id">ID: ${uploaderInfo.id}</p>
+                                <p class="uploader-name">${host?.name || I18n.t('common.unknown')}</p>
+                                <p class="uploader-rks">RKS: ${(host?.rks ?? 0).toFixed(2)}</p>
+                                <p class="uploader-bio">${host?.bio || I18n.t('room.host_no_bio')}</p>
+                                <p class="uploader-id">ID: ${details.ownerId}</p>
+                                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px; font-weight:700;">${I18n.t('room.room_host_tag')}</p>
                             </div>
                         </a>
                     </div>
-                </div>`;
-        } else if (uploaderId) {
-            uploaderHtml = `
-                <div class="detail-card">
-                    <h3>Chart Uploader</h3>
-                    <div class="uploader-info">
-                        <div class="uploader-text">
-                            <p class="uploader-name">Unknown User</p>
-                            <p class="uploader-id">ID: ${uploaderId}</p>
-                        </div>
-                    </div>
-                </div>`;
-        } else {
-            // Placeholder for layout consistency
-            uploaderHtml = `
-                <div class="detail-card">
-                    <h3>Chart Uploader</h3>
-                    <div class="uploader-info">
-                        <div class="uploader-text">
-                            <p style="color:#aaa; font-style:italic;">No chart selected</p>
-                        </div>
-                    </div>
-                </div>`;
-        }
+                </div>
+            `;
 
-        // Generate Results Section
-        const playersWithScores = details.players.filter(p => p.score);
-        
-        // Sort by score desc
-        playersWithScores.sort((a, b) => b.score.score - a.score.score);
-        
-        let resultsTitle = 'Game Results';
-        let resultsSubtitle = '';
-
-        if (details.lastGameChart && details.selectedChart && details.lastGameChart.id !== details.selectedChart.id) {
-             // Only show (Last) if we have moved on to a different chart
-             resultsTitle = 'Game Results (Last)';
-             resultsSubtitle = `<div style="font-size:0.85em; color:#7f8c8d; margin-bottom:5px;">
-                ${details.lastGameChart.name} <span style="color:#aaa;">|</span> 
-                ${details.lastGameChart.level || 'Lv.?'} <span style="color:#aaa;">|</span> 
-                ID: ${details.lastGameChart.id}
-             </div>`;
-        }
-
-        const rows = playersWithScores.length > 0 
-            ? playersWithScores.map((p, index) => {
-                const rank = index + 1;
-                let rankClass = '';
-                if (rank === 1) rankClass = 'rank-1';
-                else if (rank === 2) rankClass = 'rank-2';
-                else if (rank === 3) rankClass = 'rank-3';
-                
-                const accVal = p.score.accuracy;
-                const accPercent = (accVal * 100).toFixed(2) + '%';
-                let accClass = 'val-red';
-                if (accVal >= 1.0) accClass = 'val-gold'; // Exact 100%
-                else if (accVal >= 0.95) accClass = 'val-green'; // >= 95%
-
-                const scoreVal = p.score.score;
-                let scoreClass = 'score-val';
-                if (scoreVal === 1000000) scoreClass += ' val-gold';
-
+            // Player List
+            const sortedPlayers = [...(details.players || [])].sort((a,b) => (a.id===details.ownerId?-1:b.id===details.ownerId?1:a.id===-1?1:b.id===-1?-1:0));
+            const playersHtml = sortedPlayers.map(p => {
+                const isOwner = p.id === details.ownerId;
+                const isServer = p.id === -1;
+                const statusClass = isServer ? 'status-bot' : (p.isReady ? 'status-ready' : 'status-not-ready');
+                const nameClass = isServer ? 'name-bot' : (isOwner ? 'name-owner' : 'name-member');
+                const prefixClass = isServer ? 'prefix-bot' : (isOwner ? 'prefix-owner' : 'prefix-player');
+                const prefixText = isServer ? '[Bot]' : (isOwner ? '[Owner]' : '[Player]');
                 return `
-                    <tr>
-                        <td class="${rankClass}">#${rank}</td>
-                        <td style="text-align: left; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p.name}</td>
-                        <td class="${scoreClass}">${scoreVal.toLocaleString()}</td>
-                        <td class="${accClass}">${accPercent}</td>
-                        <td>${p.score.maxCombo}</td>
-                        <td style="font-size: 0.8em; color: #7f8c8d;">
-                            ${p.score.perfect} / ${p.score.good} / ${p.score.bad} / ${p.score.miss}
-                        </td>
-                    </tr>
+                    <li class="player-item">
+                        <div class="player-info-left">
+                            <img src="${p.avatar || 'https://phira.5wyxi.com/files/6ad662de-b505-4725-a7ef-72d65f32b404'}" class="player-avatar-small">
+                            <a class="player-name ${nameClass}" href="${isServer ? '#' : `https://phira.moe/user/${p.id}`}" target="_blank"><span class="name-prefix ${prefixClass}">${prefixText}</span>${p.name || I18n.t('common.unknown')}</a>
+                        </div>
+                        <span class="player-status ${statusClass}">${isServer ? 'Bot' : (p.isReady ? 'Ready' : 'Not Ready')}</span>
+                    </li>
                 `;
-            }).join('')
-            : '<tr><td colspan="6" style="padding: 20px; color: #999; font-style: italic;">No results yet. Finish a game to see scores!</td></tr>';
+            }).join('');
 
-        const resultsHtml = `
-            <div class="detail-card">
-                <h3>${resultsTitle}</h3>
-                ${resultsSubtitle}
-                <div class="results-scroll">
-                    <div style="overflow-x: auto;">
+            // Results - Always shown
+            const scores = (details.players || []).filter(p => p.score).sort((a,b) => (b.score?.score || 0) - (a.score?.score || 0));
+            const resultsTableBody = scores.length > 0 
+                ? scores.map((p, i) => `
+                    <tr>
+                        <td class="rank-${i+1}">#${i+1}</td>
+                        <td style="text-align:left; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p.name || I18n.t('common.unknown')}</td>
+                        <td class="score-val">${(p.score?.score || 0).toLocaleString()}</td>
+                        <td>${((p.score?.accuracy || 0)*100).toFixed(2)}%</td>
+                        <td style="font-weight: 700; color: var(--primary-color);">${p.score?.maxCombo || 0}</td>
+                        <td style="font-size: 0.85em; color: var(--text-muted); min-width: 80px;">
+                            ${p.score?.perfect || 0} / ${p.score?.good || 0} / ${p.score?.bad || 0} / ${p.score?.miss || 0}
+                        </td>
+                    </tr>`).join('')
+                : `<tr><td colspan="6" style="padding: 40px; color: var(--text-muted); font-style: italic;">${I18n.t('room.no_results')}</td></tr>`;
+
+            const resultsHtml = `
+                <div class="detail-card" id="card-game-results">
+                    <h3>${I18n.t('room.game_results')}</h3>
+                    <div class="results-scroll">
                         <table class="results-table">
                             <thead>
                                 <tr>
                                     <th>#</th>
-                                    <th style="text-align: left">Player</th>
-                                    <th>Score</th>
+                                    <th style="text-align:left">${I18n.t('room.player')}</th>
+                                    <th>${I18n.t('room.score')}</th>
                                     <th>Acc</th>
                                     <th>Combo</th>
                                     <th>P/G/B/M</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                ${rows}
-                            </tbody>
+                            <tbody>${resultsTableBody}</tbody>
                         </table>
                     </div>
                 </div>
-            </div>
-        `;
+            `;
 
-        // Generate Messages Section (Public Screen)
-        const messagesHtml = (details.messages || []).map(m => {
-            let content = '';
-            let typeClass = 'msg-system';
-            
-            switch (m.type) {
-                case 'Chat':
-                    const safeContent = m.content.replace(/\n/g, '<br>');
-                    content = `<span class="msg-user">${m.userName}:</span> ${safeContent}`;
-                    typeClass = 'msg-chat';
-                    break;
-                case 'JoinRoom':
-                    content = `玩家 ${m.name || m.userName} 加入了房间`;
-                    break;
-                case 'LeaveRoom':
-                    content = `玩家 ${m.name || m.userName} 离开了房间`;
-                    break;
-                case 'CreateRoom':
-                    content = `房间已由 ${m.userName} 创建`;
-                    break;
-                case 'NewHost':
-                    content = `玩家 ${m.userName} 成为了新房主`;
-                    break;
-                case 'SelectChart':
-                    content = `房主选择了谱面: ${m.name} (ID: ${m.id})`;
-                    break;
-                case 'GameStart':
-                    content = `房主发起了游戏开始请求`;
-                    break;
-                case 'Ready':
-                    content = `玩家 ${m.userName} 已准备`;
-                    typeClass = 'msg-ready';
-                    break;
-                case 'CancelReady':
-                    content = `玩家 ${m.userName} 取消了准备`;
-                    break;
-                case 'StartPlaying':
-                    content = `游戏开始！`;
-                    typeClass = 'msg-playing';
-                    break;
-                case 'Played':
-                    const score = m.score !== undefined && m.score !== null ? m.score.toLocaleString() : '0';
-                    const accuracy = m.accuracy !== undefined && m.accuracy !== null ? (m.accuracy * 100).toFixed(2) : '0.00';
-                    content = `玩家 ${m.userName} 已完成: ${score} (Acc: ${accuracy}%)`;
-                    break;
-                case 'Abort':
-                    content = `玩家 ${m.userName} 放弃了游玩`;
-                    typeClass = 'msg-abort';
-                    break;
-                case 'GameEnd':
-                    content = `游戏结束`;
-                    break;
-                default:
-                    content = `${m.type} event`;
-            }
-            
-            return `<div class="message-item ${typeClass}">${content}</div>`;
-        }).join(''); // Show oldest on top, newest on bottom
+            // Messages
+            const messagesHtml = (details.messages || []).map(m => {
+                let text = '';
+                const uName = m.userName || I18n.t('common.unknown');
+                switch(m.type) {
+                    case 'Chat': text = `<span class="msg-user">${uName}:</span><span class="msg-chat">${m.content}</span>`; break;
+                    case 'CreateRoom': text = `<span class="msg-system">${I18n.t('room.events.create', { user: uName })}</span>`; break;
+                    case 'JoinRoom': text = `<span class="msg-system">${I18n.t('room.events.join', { user: m.name || uName })}</span>`; break;
+                    case 'LeaveRoom': text = `<span class="msg-system">${I18n.t('room.events.leave', { user: m.name || uName })}</span>`; break;
+                    case 'NewHost': text = `<span class="msg-system">${I18n.t('room.events.new_host', { user: uName })}</span>`; break;
+                    case 'SelectChart': text = `<span class="msg-system">${I18n.t('room.events.select_chart', { name: m.name, id: m.id })}</span>`; break;
+                    case 'GameStart': text = `<span class="msg-system">${I18n.t('room.events.game_start')}</span>`; break;
+                    case 'Ready': text = `<span class="msg-ready">${I18n.t('room.events.ready', { user: uName })}</span>`; break;
+                    case 'CancelReady': text = `<span class="msg-system">${I18n.t('room.events.cancel_ready', { user: uName })}</span>`; break;
+                    case 'CancelGame': text = `<span class="msg-system">${I18n.t('room.events.cancel_game', { user: uName })}</span>`; break;
+                    case 'StartPlaying': text = `<span class="msg-playing">${I18n.t('room.events.start_playing')}</span>`; break;
+                    case 'Played': text = `<span class="msg-system">${I18n.t('room.events.played', { user: uName, score: (m.score||0).toLocaleString(), acc: ((m.accuracy||0)*100).toFixed(2) })}</span>`; break;
+                    case 'GameEnd': text = `<span class="msg-system">${I18n.t('room.events.game_end')}</span>`; break;
+                    case 'Abort': text = `<span class="msg-system">${I18n.t('room.events.abort', { user: uName })}</span>`; break;
+                    case 'LockRoom': text = `<span class="msg-system">${I18n.t('room.events.lock_room', { status: m.lock ? I18n.t('room.events.lock') : I18n.t('room.events.unlock') })}</span>`; break;
+                    case 'CycleRoom': text = `<span class="msg-system">${I18n.t('room.events.cycle_room', { status: m.cycle ? I18n.t('room.events.on') : I18n.t('room.events.off') })}</span>`; break;
+                    default: text = `<span class="msg-system">${m.type} event</span>`;
+                }
+                return `<div class="message-item">${text}</div>`;
+            }).join('');
 
-        const chatBoxHtml = `
-            <div class="detail-card">
-                <h3>Public Screen</h3>
-                <div class="message-container" id="message-scroll-box">
-                    ${messagesHtml || '<p style="color:#999; font-style:italic;">No messages yet.</p>'}
+            const chatContentHtml = messagesHtml || `
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--text-muted); opacity:0.6;">
+                    <div style="font-size:2rem; margin-bottom:10px;">💬</div>
+                    <div style="font-size:0.8rem;">${I18n.t('room.no_messages')}</div>
                 </div>
-            </div>
-        `;
+            `;
 
-        // Generate Admin Panel (only if isAdmin)
-        let adminPanelHtml = '';
-        if (isAdmin) {
-            adminPanelHtml = `
-                <div class="detail-card admin-panel-card">
-                    <h3>Admin Panel</h3>
-                    
-                    <div class="admin-category">
-                        <div class="admin-category-title">General Actions</div>
-                        <div class="admin-buttons-grid">
-                            <button class="admin-btn action-primary" onclick="window.sendAdminServerMessage()">Server Message</button>
-                            <button class="admin-btn action-primary" onclick="window.forceStartByAdmin()">Force Start</button>
-                            <button class="admin-btn action-danger" onclick="window.closeRoomByAdmin()">Close Room</button>
-                        </div>
+            // Admin
+            let adminHtml = '';
+            if (isAdmin) {
+                adminHtml = `
+                    <div class="detail-card admin-panel-card" id="card-admin-panel">
+                        <h3>${I18n.t('room.admin_panel')}</h3>
+                        <div class="admin-category"><div class="admin-buttons-grid">
+                            <button class="admin-btn action-primary" onclick="window.sendAdminServerMessage()">${I18n.t('room.admin.message')}</button>
+                            <button class="admin-btn action-primary" onclick="window.forceStartByAdmin()">${I18n.t('room.admin.start')}</button>
+                            <button class="admin-btn action-danger" onclick="window.closeRoomByAdmin()">${I18n.t('room.admin.close')}</button>
+                            <button class="admin-btn" onclick="window.setMaxPlayersByAdmin()">${I18n.t('room.admin.size')}</button>
+                            <button class="admin-btn" onclick="window.toggleRoomModeByAdmin()">${I18n.t('room.admin.mode')}</button>
+                            <button class="admin-btn" onclick="window.toggleRoomLockByAdmin()">${I18n.t('room.admin.lock')}</button>
+                            <button class="admin-btn action-warning" onclick="window.kickPlayerByAdmin()">${I18n.t('room.admin.kick')}</button>
+                            <button class="admin-btn" onclick="window.manageBlacklistByAdmin()">${I18n.t('room.admin.blacklist')}</button>
+                            <button class="admin-btn" onclick="window.manageWhitelistByAdmin()">${I18n.t('room.admin.whitelist')}</button>
+                        </div></div>
                     </div>
+                `;
+            }
 
-                    <div class="admin-category">
-                        <div class="admin-category-title">Room Config</div>
-                        <div class="admin-buttons-grid">
-                            <button class="admin-btn" onclick="window.setMaxPlayersByAdmin()">Max Players</button>
-                            <button class="admin-btn" onclick="window.toggleRoomModeByAdmin()">Change Mode</button>
-                            <button class="admin-btn" onclick="window.toggleRoomLockByAdmin()">Lock/Unlock Room</button>
-                        </div>
+            const otherRoomsContent = (currentOtherRooms || []).length > 0 
+                ? currentOtherRooms.slice(0,5).map(r => `<a href="room.html?id=${r.id}" class="other-room-item"><span class="other-room-name">${r.name || 'Room'}</span><span class="other-room-count">${r.playerCount}/${r.maxPlayers}</span></a>`).join('')
+                : `<div style="padding:20px; text-align:center; color:var(--text-muted); font-size:0.85rem; font-style:italic;">${I18n.t('room.no_other_rooms')}</div>`;
+
+            roomDetails.innerHTML = `
+                <div class="left-sidebar">
+                    <div class="detail-card" id="card-room-info">
+                        <h3>${I18n.t('room.room_info')}</h3>
+                        <p><strong>ID:</strong> ${details.id || 'N/A'}</p>
+                        <p><strong>${I18n.t('room.mode')}:</strong> <span class="room-mode-tag">${roomMode}</span></p>
+                        <p><strong>${I18n.t('room.host')}:</strong> <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;" title="${host?.name || ''}">${host?.name || I18n.t('common.unknown')}</span></p>
+                        <p><strong>${I18n.t('room.players')}:</strong> ${details.playerCount || 0} / ${details.maxPlayers || 0}</p>
+                        <p><strong>${I18n.t('room.status')}:</strong> ${details.state?.type || 'Unknown'}</p>
+                        <p><strong>${I18n.t('room.locked')}:</strong> <span class="${lockStatusClass}">${lockIcon}</span></p>
                     </div>
-
-                    <div class="admin-category">
-                        <div class="admin-category-title">Access Control</div>
-                        <div class="admin-buttons-grid">
-                            <button class="admin-btn action-warning" onclick="window.kickPlayerByAdmin()">Kick Player</button>
-                            <button class="admin-btn" onclick="window.manageBlacklistByAdmin()">BlackList</button>
-                            <button class="admin-btn" onclick="window.manageWhitelistByAdmin()">WhiteList</button>
-                        </div>
+                    <div id="card-host-info">${hostHtml}</div>
+                    <div class="detail-card" id="card-other-rooms">
+                        <h3>${I18n.t('room.other_rooms')}</h3>
+                        <div class="other-rooms-scroll">${otherRoomsContent}</div>
+                        ${currentOtherRooms.length > 5 ? `<button class="refresh-rooms-btn" style="width:100%; margin-top:10px; padding:8px; border-radius:8px; border:1px solid var(--border-color); cursor:pointer;" onclick="window.refreshOtherRooms()">&#128260; ${I18n.t('room.refresh')}</button>` : ''}
+                    </div>
+                </div>
+                <div class="center-column">
+                    <div class="detail-card" id="card-player-list">
+                        <h3>${I18n.t('room.player_list')}</h3>
+                        <div class="player-list-scroll"><ul class="player-list">${playersHtml}</ul></div>
+                    </div>
+                    ${resultsHtml}
+                    ${adminHtml}
+                </div>
+                <div class="right-sidebar">
+                    <div class="detail-card" id="card-chart-info"><h3>${I18n.t('room.chart_info')}</h3>${chartInfoHtml}</div>
+                    <div class="detail-card" id="card-public-screen">
+                        <h3>${I18n.t('room.public_screen')}</h3>
+                        <div class="message-container" id="message-scroll-box">${chatContentHtml}</div>
                     </div>
                 </div>
             `;
-        }
 
-        const roomMode = details.cycle ? '循环模式' : '普通模式';
+            const scrollBox = document.getElementById('message-scroll-box');
+            if (scrollBox) scrollBox.scrollTop = scrollBox.scrollHeight;
 
-        roomDetails.innerHTML = `
-            <div class="left-sidebar">
-                <div class="detail-card">
-                    <h3>Room Info</h3>
-                    <p><strong>ID:</strong> ${details.id}</p>
-                    <p><strong>Mode:</strong> <span style="font-weight:bold; color:#3498db;">${roomMode}</span></p>
-                    <p><strong>Host:</strong> <span>${ownerName} ${ownerIdDisplay}</span></p>
-                    <p><strong>Players:</strong> ${details.playerCount} / ${details.maxPlayers}</p>
-                    <p><strong>Status:</strong> ${details.state.type}</p>
-                    <p><strong>Locked:</strong> <span class="${lockStatusClass}">${lockIcon}</span></p>
-                </div>
-                ${uploaderHtml}
-                ${otherRoomsHtml}
-            </div>
-            <div class="center-column">
-                <div class="detail-card">
-                    <h3>Player List</h3>
-                    <div class="player-list-scroll">
-                        <ul class="player-list">
-                            ${playersHtml}
-                        </ul>
-                    </div>
-                </div>
-                ${resultsHtml}
-                ${adminPanelHtml}
-            </div>
-            <div class="right-sidebar">
-                <div class="detail-card">
-                    <h3>Chart</h3>
-                    ${chartInfoHtml}
-                </div>
-                ${chatBoxHtml}
-            </div>
-        `;
-
-        // Scroll chat to bottom
-        const scrollBox = document.getElementById('message-scroll-box');
-        if (scrollBox) {
-            scrollBox.scrollTop = scrollBox.scrollHeight;
+        } catch (err) {
+            console.error('Render Error Detail:', err);
+            if (roomName) roomName.textContent = 'Render Error: ' + err.message;
         }
     }
 
-    connectWebSocket();
+    if (roomId) {
+        if (I18n.isReady) connectWebSocket();
+        else document.addEventListener('i18nReady', connectWebSocket);
+    }
+    else if (roomName) roomName.textContent = 'Error: No Room ID specified';
 });

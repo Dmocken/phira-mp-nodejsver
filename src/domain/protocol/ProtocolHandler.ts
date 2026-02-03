@@ -38,6 +38,7 @@ export class ProtocolHandler {
     private readonly authService: AuthService,
     private readonly logger: Logger,
     private readonly serverName: string,
+    private readonly phiraApiUrl: string,
     private readonly onSessionChange?: () => void,
   ) {}
 
@@ -275,7 +276,7 @@ export class ProtocolHandler {
     const blacklistDetails: string[] = [];
     for (const id of userIds) {
         try {
-            const response = await fetch(`https://api.phira.cn/user/${id}`, {
+            const response = await fetch(`https://phira.5wyxi.com/user/${id}`, {
                 headers: { 'User-Agent': 'PhiraServer/1.0' }
             });
             if (response.ok) {
@@ -327,7 +328,7 @@ export class ProtocolHandler {
     const whitelistDetails: string[] = [];
     for (const id of userIds) {
         try {
-            const response = await fetch(`https://api.phira.cn/user/${id}`, {
+            const response = await fetch(`https://phira.5wyxi.com/user/${id}`, {
                 headers: { 'User-Agent': 'PhiraServer/1.0' }
             });
             if (response.ok) {
@@ -442,7 +443,7 @@ export class ProtocolHandler {
   private async fetchChartInfo(chartId: number): Promise<ChartInfo> {
     this.logger.debug(`Fetching chart info for ID: ${chartId}`);
     
-    const response = await fetch(`https://api.phira.cn/chart/${chartId}`, {
+    const response = await fetch(`https://phira.5wyxi.com/chart/${chartId}`, {
         headers: { 'User-Agent': 'PhiraServer/1.0' }
     });
     
@@ -465,7 +466,7 @@ export class ProtocolHandler {
     let uploaderInfo;
     if (uploaderId && !isNaN(uploaderId)) {
         try {
-            const userResponse = await fetch(`https://api.phira.cn/user/${uploaderId}`, {
+            const userResponse = await fetch(`https://phira.5wyxi.com/user/${uploaderId}`, {
                 headers: { 'User-Agent': 'PhiraServer/1.0' }
             });
             if (userResponse.ok) {
@@ -473,7 +474,7 @@ export class ProtocolHandler {
                 uploaderInfo = {
                     id: userData.id,
                     name: userData.name,
-                    avatar: userData.avatar ?? 'https://api.phira.cn/files/6ad662de-b505-4725-a7ef-72d65f32b404',
+                    avatar: userData.avatar ?? 'https://phira.5wyxi.com/files/6ad662de-b505-4725-a7ef-72d65f32b404',
                     rks: userData.rks ?? 0,
                     bio: userData.bio,
                 };
@@ -652,6 +653,26 @@ export class ProtocolHandler {
     }
   }
 
+  private async fetchUserInfo(userId: number): Promise<{ rks?: number; bio?: string }> {
+    try {
+        const response = await fetch(`https://phira.5wyxi.com/user/${userId}`, {
+            headers: { 'User-Agent': 'PhiraServer/1.0' }
+        });
+        if (response.ok) {
+            const userData = await response.json();
+            return {
+                rks: userData.rks ?? 0,
+                bio: userData.bio,
+            };
+        }
+    } catch (error) {
+        this.logger.error(`Error fetching detailed info for user ${userId}:`, { 
+            error: error instanceof Error ? error.message : String(error) 
+        });
+    }
+    return {};
+  }
+
   private handleAuthenticate(
     connectionId: string,
     token: string,
@@ -679,7 +700,14 @@ export class ProtocolHandler {
 
     const authenticate = async (): Promise<void> => {
       try {
-        const userInfo = await this.authService.authenticate(token);
+        const basicUserInfo = await this.authService.authenticate(token);
+        const detailedInfo = await this.fetchUserInfo(basicUserInfo.id);
+        
+        const userInfo: UserInfo = {
+            ...basicUserInfo,
+            rks: detailedInfo.rks,
+            bio: detailedInfo.bio
+        };
 
         const existingConnectionId = this.userConnections.get(userInfo.id);
         if (existingConnectionId && existingConnectionId !== connectionId) {
@@ -765,7 +793,7 @@ export class ProtocolHandler {
           message: {
             type: 'Chat',
             user: -1,
-            content: `\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nHi,${userInfo.name}！欢迎来到 ${this.serverName} 服务器，希望你能在这里玩的开心呢\n=========公告==========\nFunXLink Studio Phira Server\n1. 服务器ip：phira.funxlink.fun:19723\n2. 服务器QQ群：762722951\n3. 服务器捐赠链接：https://afdian.com/a/chuzouX\n=========公告==========\n\n=========游玩须知==========\n1. 联机大厅【官方】：https://phi.funxlink.fun\n2. 联机大厅【dmocken】：https://phira.dmocken.top/mulity\n3. 默认开房间是在联机大厅公开房间号的\n4. 如果你不想让你的房间公布 请使用sm开头作为房间号\n=========游玩须知==========\n\nEnjoy~`,
+            content: `\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nHi,${userInfo.name}！欢迎来到 ${this.serverName} 服务器，希望你能在这里玩的开心呢\n=========公告==========\nFunXLink Studio Phira Server\n1. 服务器ip：phira.funxlink.fun:19723\n2. 服务器QQ群：762722951\n3. 服务器捐赠链接：https://afdian.com/a/chuzouX\n=========公告==========\n\n=========游玩须知==========\n1. 联机大厅【官方】：https://phi.funxlink.fun\n2. 联机大厅【dmocken】：https://phira.dmocken.top/mulity\n3. 默认开房间是在联机大厅公开房间号的\n4. 如果你不想让你的房间公布 请使用sm开头作为房间号\n5. 房间内默认有一个名称为FunXLink Studio的机器人 不影响游玩\n=========游玩须知==========\n\nEnjoy~`,
           },
         });
       } catch (error) {
@@ -878,7 +906,7 @@ export class ProtocolHandler {
           // Send server user join AFTER client has transitioned
                 this.broadcastToRoom(room, {
                   type: ServerCommandType.OnJoinRoom,
-                  user: { id: -1, name: this.serverName, avatar: 'https://api.phira.cn/files/6ad662de-b505-4725-a7ef-72d65f32b404', monitor: true },
+                  user: { id: -1, name: this.serverName, avatar: 'https://phira.5wyxi.com/files/6ad662de-b505-4725-a7ef-72d65f32b404', monitor: true },
                 });
           this.broadcastMessage(room, {
             type: 'CreateRoom',
@@ -980,7 +1008,7 @@ export class ProtocolHandler {
       // Delay announcement slightly
 
       const usersInRoom = Array.from(room.players.values()).map((p) => p.user);
-      const serverUser: UserInfo = { id: -1, name: this.serverName, avatar: 'https://api.phira.cn/files/6ad662de-b505-4725-a7ef-72d65f32b404', monitor: true };
+      const serverUser: UserInfo = { id: -1, name: this.serverName, avatar: 'https://phira.5wyxi.com/files/6ad662de-b505-4725-a7ef-72d65f32b404', monitor: true };
       
       const joinResponse: JoinRoomResponse = {
         state: room.state,
@@ -1952,7 +1980,7 @@ export class ProtocolHandler {
     this.broadcastRoomUpdate(room);
   }
 
-  private broadcastRoomUpdate(room: Room): void {
+  public broadcastRoomUpdate(room: Room): void {
     this.logger.info('[广播] 房间更新', {
       roomId: room.id,
       status: room.state.type,
@@ -1971,7 +1999,7 @@ export class ProtocolHandler {
       users.set(id, playerInfo.user);
     }
     // Add special server user info (ID -1, name from config)
-    users.set(-1, { id: -1, name: this.serverName, avatar: 'https://api.phira.cn/files/6ad662de-b505-4725-a7ef-72d65f32b404', monitor: true });
+    users.set(-1, { id: -1, name: this.serverName, avatar: 'https://phira.5wyxi.com/files/6ad662de-b505-4725-a7ef-72d65f32b404', monitor: true });
 
     const player = room.players.get(userId);
 

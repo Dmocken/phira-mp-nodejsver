@@ -1,6 +1,7 @@
 
-import { Server as HttpServer } from 'http';
+import { Server as HttpServer, IncomingMessage } from 'http';
 import { WebSocketServer as WsServer, WebSocket } from 'ws';
+import express from 'express';
 import { Logger } from '../logging/logger';
 import { RoomManager, Room, PlayerInfo } from '../domain/rooms/RoomManager';
 import { ProtocolHandler } from '../domain/protocol/ProtocolHandler';
@@ -12,6 +13,10 @@ interface WebSocketMessage {
   payload?: any;
 }
 
+interface ExtWebSocket extends WebSocket {
+  isAdmin?: boolean;
+}
+
 export class WebSocketServer {
   private wss: WsServer;
 
@@ -21,37 +26,74 @@ export class WebSocketServer {
     private readonly protocolHandler: ProtocolHandler,
     private readonly config: ServerConfig,
     private readonly logger: Logger,
+    private readonly sessionParser: express.RequestHandler,
   ) {
     this.wss = new WsServer({ server });
     this.setupConnectionHandler();
   }
 
   private setupConnectionHandler(): void {
-    this.wss.on('connection', (ws: WebSocket) => {
+    this.wss.on('connection', (ws: ExtWebSocket, req: IncomingMessage) => {
       this.logger.info('New WebSocket client connected');
 
-      // Send the current room list immediately on connection
+      // Link express session to WebSocket
       try {
-        const message: WebSocketMessage = {
-          type: 'roomList',
-          payload: this.getSanitizedRoomList(),
-        };
-        ws.send(JSON.stringify(message));
+        // Robust mock response for session middleware
+        const res = {
+            getHeader: () => undefined,
+            setHeader: () => {},
+            writeHead: () => {},
+            end: () => {}
+        } as any;
         
-        // Send server stats
-        this.sendStats(ws);
-      } catch (error) {
-        this.logger.error('Failed to send initial room list to WebSocket client', { error });
-      }
-      
-      ws.on('message', (message: string) => {
+        (this.sessionParser as any)(req, res, (err?: any) => {
+          if (err) {
+            this.logger.error('Session parser middleware error', { error: err });
+          }
+          
+          const session = (req as any).session;
+          const isAdmin = session?.isAdmin ?? false;
+          ws.isAdmin = isAdmin;
+
+          if (isAdmin) {
+            this.logger.info('Admin WebSocket client connected');
+          }
+
+          // Send the current room list immediately on connection
+          try {
+            const message: WebSocketMessage = {
+              type: 'roomList',
+              payload: this.getSanitizedRoomList(isAdmin),
+            };
+            ws.send(JSON.stringify(message));
+            
+            // Send server stats
+            this.sendStats(ws);
+          } catch (error) {
+            this.logger.error('Failed to send initial room list to WebSocket client', { error });
+          }
+          
+          ws.on('message', (message: string) => {
+            try {
+              const parsedMessage: WebSocketMessage = JSON.parse(message);
+              this.handleClientMessage(ws, parsedMessage, isAdmin);
+            } catch (error) {
+              this.logger.error('Failed to parse WebSocket message from client', { error, message });
+            }
+          });
+        });
+      } catch (sessionError) {
+        this.logger.error('Session parsing failed in WebSocket connection', { error: sessionError });
+        // Fallback to non-admin if session parsing fails
+        ws.isAdmin = false;
+        // Still try to send the list
         try {
-          const parsedMessage: WebSocketMessage = JSON.parse(message);
-          this.handleClientMessage(ws, parsedMessage);
-        } catch (error) {
-          this.logger.error('Failed to parse WebSocket message from client', { error, message });
-        }
-      });
+          ws.send(JSON.stringify({
+            type: 'roomList',
+            payload: this.getSanitizedRoomList(false),
+          }));
+        } catch (e) {}
+      }
 
       ws.on('close', () => {
         this.logger.info('WebSocket client disconnected');
@@ -63,27 +105,29 @@ export class WebSocketServer {
     });
   }
   
-  private handleClientMessage(ws: WebSocket, message: WebSocketMessage): void {
+  private handleClientMessage(ws: ExtWebSocket, message: WebSocketMessage, isAdmin: boolean): void {
     this.logger.debug('Received WebSocket message', { type: message.type });
     switch (message.type) {
       case 'getRoomDetails':
-        this.sendRoomDetails(ws, message.payload.roomId);
+        this.sendRoomDetails(ws, message.payload.roomId, isAdmin);
         break;
       default:
         this.logger.warn('Received unknown WebSocket message type', { type: message.type });
     }
   }
 
-  private sendRoomDetails(ws: WebSocket, roomId: string): void {
+  private sendRoomDetails(ws: ExtWebSocket, roomId: string, isAdmin: boolean): void {
     const room = this.roomManager.getRoom(roomId);
     
     // Check access logic similar to list filtering for security/consistency
     if (room) {
         let isVisible = true;
-        if (this.config.enablePubWeb) {
-            if (!room.id.startsWith(this.config.pubPrefix)) isVisible = false;
-        } else if (this.config.enablePriWeb) {
-            if (room.id.startsWith(this.config.priPrefix)) isVisible = false;
+        if (!isAdmin) {
+            if (this.config.enablePubWeb) {
+                if (!room.id.startsWith(this.config.pubPrefix)) isVisible = false;
+            } else if (this.config.enablePriWeb) {
+                if (room.id.startsWith(this.config.priPrefix)) isVisible = false;
+            }
         }
 
         if (!isVisible) {
@@ -111,9 +155,10 @@ export class WebSocketServer {
     }
   }
 
-  private getSanitizedRoomList(): Partial<Room>[] {
+  private getSanitizedRoomList(isAdmin: boolean = false): Partial<Room>[] {
     return this.roomManager.listRooms()
       .filter(room => {
+        if (isAdmin) return true;
         // Mode 1: Public Web Only (Whitelist)
         if (this.config.enablePubWeb) {
           return room.id.startsWith(this.config.pubPrefix);
@@ -134,7 +179,11 @@ export class WebSocketServer {
             ownerName: owner ? owner.user.name : 'Unknown',
             playerCount: room.players.size,
             maxPlayers: room.maxPlayers,
-            state: room.state,
+            state: {
+                ...room.state,
+                chartId: (room.state as any).chartId ?? room.selectedChart?.id ?? null,
+                chartName: room.selectedChart?.name ?? null,
+            } as any,
             locked: room.locked,
             cycle: room.cycle,
         };
@@ -151,18 +200,22 @@ export class WebSocketServer {
         score: p.score,
         isAdmin: this.config.adminPhiraId.includes(p.user.id),
         isOwner: this.config.ownerPhiraId.includes(p.user.id),
+        rks: p.rks,
+        bio: p.bio,
     }));
 
     // Add Server user manually as it's not in room.players
     players.unshift({
         id: -1,
         name: this.config.serverName,
-        avatar: 'https://api.phira.cn/files/6ad662de-b505-4725-a7ef-72d65f32b404',
+        avatar: 'https://phira.5wyxi.com/files/6ad662de-b505-4725-a7ef-72d65f32b404',
         isReady: false,
         isFinished: false,
         score: null,
         isAdmin: false,
         isOwner: false,
+        rks: 0,
+        bio: 'Phira Multiplayer Server Bot',
     });
 
     return {
@@ -171,7 +224,11 @@ export class WebSocketServer {
         ownerId: room.ownerId,
         playerCount: room.players.size,
         maxPlayers: room.maxPlayers,
-        state: room.state,
+        state: {
+            ...room.state,
+            chartId: (room.state as any).chartId ?? room.selectedChart?.id ?? null,
+            chartName: room.selectedChart?.name ?? null,
+        },
         locked: room.locked,
         selectedChart: room.selectedChart,
         lastGameChart: room.lastGameChart,
@@ -195,22 +252,31 @@ export class WebSocketServer {
                 name: r.name,
                 playerCount: r.players.size,
                 maxPlayers: r.maxPlayers,
-                state: r.state
+                state: {
+                    ...r.state,
+                    chartId: (r.state as any).chartId ?? r.selectedChart?.id ?? null,
+                    chartName: r.selectedChart?.name ?? null,
+                }
             })),
     };
   }
 
   public broadcastRooms(): void {
     this.logger.debug('Broadcasting room list to all WebSocket clients');
-    const message: WebSocketMessage = {
+    
+    const adminList = JSON.stringify({
       type: 'roomList',
-      payload: this.getSanitizedRoomList(),
-    };
-    const serializedMessage = JSON.stringify(message);
+      payload: this.getSanitizedRoomList(true),
+    });
+    const publicList = JSON.stringify({
+      type: 'roomList',
+      payload: this.getSanitizedRoomList(false),
+    });
 
-    this.wss.clients.forEach(client => {
+    this.wss.clients.forEach((client: ExtWebSocket) => {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(serializedMessage, (error) => {
+        const message = client.isAdmin ? adminList : publicList;
+        client.send(message, (error) => {
           if (error) {
             this.logger.error('Failed to broadcast room list to a client', { error });
           }

@@ -88,6 +88,8 @@ export interface UserInfo {
   name: string;
   avatar?: string;
   monitor: boolean;
+  rks?: number;
+  bio?: string;
 }
 
 export interface PlayerScore {

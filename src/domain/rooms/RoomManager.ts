@@ -15,6 +15,8 @@ export interface PlayerInfo {
   score: PlayerScore | null;
   isConnected: boolean;
   disconnectTime?: number;
+  rks?: number;
+  bio?: string;
 }
 
 export interface ChartInfo {
@@ -97,11 +99,14 @@ export interface RoomManager {
   isUserBlacklisted(roomId: string, userId: number): boolean;
   setRoomWhitelist(roomId: string, userIds: number[]): boolean;
   getAllPlayers(): { id: number; name: string; roomId: string; roomName: string }[];
+  setGlobalLocked(locked: boolean): void;
+  isGlobalLocked(): boolean;
 }
 
 export class InMemoryRoomManager implements RoomManager {
   private readonly rooms = new Map<string, Room>();
   private onRoomsChanged: (() => void) | null = null;
+  private globalLocked = false;
 
   constructor(
     private readonly logger: Logger,
@@ -109,6 +114,15 @@ export class InMemoryRoomManager implements RoomManager {
     onRoomsChanged: (() => void) | null = null,
   ) {
     this.onRoomsChanged = onRoomsChanged;
+  }
+
+  setGlobalLocked(locked: boolean): void {
+    this.globalLocked = locked;
+    this.logger.info(`全局房间创建锁定状态已更改为: ${locked}`);
+  }
+
+  isGlobalLocked(): boolean {
+    return this.globalLocked;
   }
 
   getAllPlayers(): { id: number; name: string; roomId: string; roomName: string }[] {
@@ -136,6 +150,10 @@ export class InMemoryRoomManager implements RoomManager {
   createRoom(options: CreateRoomOptions): Room {
     const { id, name, ownerId, ownerInfo, connectionId, maxPlayers = this.roomSize, password } = options;
 
+    if (this.globalLocked) {
+      throw new Error('服务器当前已禁止创建新房间');
+    }
+
     if (this.rooms.has(id)) {
       throw new Error(`房间 ${id} 已存在`);
     }
@@ -149,6 +167,8 @@ export class InMemoryRoomManager implements RoomManager {
       isFinished: false,
       score: null,
       isConnected: true,
+      rks: ownerInfo.rks,
+      bio: ownerInfo.bio,
     });
 
     const room: Room = {
@@ -243,6 +263,8 @@ export class InMemoryRoomManager implements RoomManager {
       isFinished: false,
       score: null,
       isConnected: true,
+      rks: userInfo.rks,
+      bio: userInfo.bio,
     });
 
     this.logger.debug('已添加玩家到房间：', { roomId, userId, playerCount: room.players.size });

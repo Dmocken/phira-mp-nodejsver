@@ -2,12 +2,15 @@
 import express from 'express';
 import { createServer, Server } from 'http';
 import path from 'path';
+import fs from 'fs';
 import session, { SessionData } from 'express-session';
 import crypto from 'crypto';
 import { Logger } from '../logging/logger';
 import { ServerConfig } from '../config/config';
 import { RoomManager } from '../domain/rooms/RoomManager';
 import { ProtocolHandler } from '../domain/protocol/ProtocolHandler';
+import * as $Captcha20230305 from '@alicloud/captcha20230305';
+import * as $OpenApi from '@alicloud/openapi-client';
 
 interface AdminSession extends SessionData {
   isAdmin?: boolean;
@@ -22,6 +25,10 @@ export class HttpServer {
   private readonly app: express.Application;
   private readonly server: Server;
   private readonly loginAttempts = new Map<string, LoginAttempt>();
+  private readonly blacklistedIps = new Set<string>();
+  private aliyunCaptchaClient?: $Captcha20230305.default;
+  private sessionParser: express.RequestHandler;
+  private readonly blacklistFile = path.join(__dirname, '../../login_blacklist.log');
   
   constructor(
     private readonly config: ServerConfig,
@@ -31,8 +38,24 @@ export class HttpServer {
   ) {
     this.app = express();
     this.server = createServer(this.app);
+
+    // Initialize session parser
+    this.sessionParser = session({
+      secret: this.config.sessionSecret,
+      resave: false,
+      saveUninitialized: true,
+      cookie: { 
+          secure: process.env.NODE_ENV === 'production', // Enable secure cookies in production
+          httpOnly: true,
+          sameSite: 'lax', // CSRF protection
+          maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      } 
+    });
+
     this.setupMiddleware();
     this.setupRoutes();
+    this.initAliyunCaptchaClient();
+    this.loadBlacklist();
     
     // Cleanup expired login attempts every hour to prevent memory leak
     setInterval(() => {
@@ -43,6 +66,130 @@ export class HttpServer {
             }
         }
     }, 60 * 60 * 1000);
+  }
+
+  private loadBlacklist(): void {
+    if (fs.existsSync(this.blacklistFile)) {
+        try {
+            const data = fs.readFileSync(this.blacklistFile, 'utf8');
+            const lines = data.split('\n');
+            lines.forEach(line => {
+                const match = line.match(/IP: ([\d.]+)/);
+                if (match) this.blacklistedIps.add(match[1]);
+            });
+            this.logger.info(`Loaded ${this.blacklistedIps.size} blacklisted IPs from file.`);
+        } catch (e) {
+            this.logger.error('Failed to load blacklist file', { error: e });
+        }
+    }
+  }
+
+  private logToBlacklist(ip: string, username: string): void {
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] IP: ${ip}, Username Attempted: ${username}, Reason: Too many failures\n`;
+    try {
+        fs.appendFileSync(this.blacklistFile, logEntry);
+        this.blacklistedIps.add(ip);
+    } catch (e) {
+        this.logger.error('Failed to write to blacklist log', { error: e });
+    }
+  }
+
+  private initAliyunCaptchaClient(): void {
+    if (this.config.captchaProvider === 'aliyun' && this.config.aliyunAccessKeyId && this.config.aliyunAccessKeySecret) {
+      try {
+        const config = new $OpenApi.Config({
+          accessKeyId: this.config.aliyunAccessKeyId,
+          accessKeySecret: this.config.aliyunAccessKeySecret,
+          endpoint: 'captcha.cn-shanghai.aliyuncs.com',
+          regionId: 'cn-shanghai',
+        });
+        this.aliyunCaptchaClient = new $Captcha20230305.default(config);
+        this.logger.info('Aliyun Captcha 2.0 client initialized');
+      } catch (error) {
+        this.logger.error('Failed to initialize Aliyun Captcha client', { error: String(error) });
+      }
+    }
+  }
+
+  private async verifyCaptcha(req: express.Request, ip: string): Promise<{ success: boolean; message?: string }> {
+      const provider = this.config.captchaProvider;
+      
+      if (provider === 'none') {
+          return { success: true };
+      }
+
+      if (provider === 'cloudflare') {
+          const turnstileToken = req.body['cf-turnstile-response'];
+          if (!this.config.turnstileSecretKey) return { success: true };
+          if (!turnstileToken) return { success: false, message: 'Turnstile verification failed (missing token).' };
+
+          try {
+              const verifyUrl = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
+              const formData = new URLSearchParams();
+              formData.append('secret', this.config.turnstileSecretKey);
+              formData.append('response', turnstileToken as string);
+              formData.append('remoteip', ip);
+
+              const result = await fetch(verifyUrl, {
+                  method: 'POST',
+                  body: formData,
+              });
+              
+              const outcome = await result.json();
+              if (!outcome.success) {
+                  this.logger.warn(`Turnstile verification failed for IP ${ip}`, outcome);
+                  return { success: false, message: 'Turnstile verification failed. Please try again.' };
+              }
+              return { success: true };
+          } catch (error) {
+              this.logger.error('Turnstile verification error:', { error: String(error) });
+              return { success: false, message: 'Internal server error during verification.' };
+          }
+      }
+
+      if (provider === 'aliyun') {
+          const captchaVerifyParam = req.body['captchaVerifyParam'] || req.body['captcha_verify_param'];
+          if (!this.aliyunCaptchaClient || !this.config.aliyunCaptchaSceneId) {
+              this.logger.error('Aliyun Captcha client not initialized or Scene ID missing');
+              return { success: false, message: 'Captcha service configuration error.' };
+          }
+          if (!captchaVerifyParam) return { success: false, message: 'Aliyun Captcha verification failed (missing param).' };
+
+          try {
+              const verifyIntelligentCaptchaRequest = new $Captcha20230305.VerifyIntelligentCaptchaRequest({
+                  captchaVerifyParam: captchaVerifyParam,
+                  sceneId: this.config.aliyunCaptchaSceneId,
+              });
+              
+              const response = await this.aliyunCaptchaClient.verifyIntelligentCaptcha(verifyIntelligentCaptchaRequest);
+              
+              this.logger.info(`Aliyun 2.0 API Response for IP ${ip}:`, { body: response.body });
+
+              const verifyResult = response.body?.result?.verifyResult;
+              if (response.body && response.body.result && (verifyResult === true || (verifyResult as any) === 'true')) {
+                  this.logger.info(`Aliyun Captcha verified successfully for IP ${ip}`);
+                  return { success: true };
+              } else {
+                  this.logger.warn(`Aliyun Captcha verification failed for IP ${ip}`, response.body);
+                  let msg = response.body?.message || 'Verification failed';
+                  if (response.body?.result?.verifyCode === 'F023') {
+                      msg = 'SceneId mismatch (F023). Please check your Aliyun console.';
+                  }
+                  return { success: false, message: msg };
+              }
+          } catch (error: any) {
+              this.logger.error('Aliyun Captcha SDK error:', { 
+                  message: error.message,
+                  code: error.code,
+                  data: error.data,
+                  stack: error.stack
+              });
+              return { success: false, message: `Captcha service connection error: ${error.message}` };
+          }
+      }
+
+      return { success: true };
   }
 
   private setupMiddleware(): void {
@@ -56,17 +203,7 @@ export class HttpServer {
         this.logger.warn('SECURITY WARNING: Using default session secret. Please set SESSION_SECRET in .env file.');
     }
 
-    this.app.use(session({
-      secret: this.config.sessionSecret,
-      resave: false,
-      saveUninitialized: true,
-      cookie: { 
-          secure: process.env.NODE_ENV === 'production', // Enable secure cookies in production
-          httpOnly: true,
-          sameSite: 'lax', // CSRF protection
-          maxAge: 24 * 60 * 60 * 1000 // 24 hours
-      } 
-    }));
+    this.app.use(this.sessionParser);
     
     // CORS middleware to allow other servers to fetch data
     this.app.use((_req, res, next) => {
@@ -91,58 +228,51 @@ export class HttpServer {
     this.app.get('/api/config/public', (_req, res) => {
         res.json({
             turnstileSiteKey: this.config.turnstileSiteKey,
+            captchaProvider: this.config.captchaProvider,
+            aliyunCaptchaSceneId: this.config.aliyunCaptchaSceneId,
+            aliyunCaptchaPrefix: this.config.aliyunCaptchaPrefix,
         });
     });
 
+    this.app.post('/api/test/verify-captcha', async (req, res) => {
+        const ip = req.ip || req.socket.remoteAddress || 'unknown';
+        const result = await this.verifyCaptcha(req, ip);
+        res.json(result);
+    });
+
     this.app.post('/login', async (req, res) => {
-      const { username, password, 'cf-turnstile-response': turnstileToken } = req.body;
+      const { username, password } = req.body;
       const ip = req.ip || req.socket.remoteAddress || 'unknown';
-      const now = Date.now();
+
+      if (this.blacklistedIps.has(ip)) {
+          return res.status(403).send('由于您多次尝试登录失败，已被系统拉入登录黑名单，如需要解除，请联系服务器管理员');
+      }
 
       if (!username || !password) {
-          return res.status(400).send('Username and password are required.');
+        return res.status(400).send('Username and password are required.');
       }
 
-      // Turnstile Verification
-      if (this.config.turnstileSecretKey) {
-          if (!turnstileToken) {
-              return res.status(400).send('Turnstile verification failed (missing token).');
-          }
-
-          try {
-              const verifyUrl = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
-              const formData = new URLSearchParams();
-              formData.append('secret', this.config.turnstileSecretKey);
-              formData.append('response', turnstileToken as string);
-              formData.append('remoteip', ip);
-
-              const result = await fetch(verifyUrl, {
-                  method: 'POST',
-                  body: formData,
-              });
-              
-              const outcome = await result.json();
-              if (!outcome.success) {
-                  this.logger.warn(`Turnstile verification failed for IP ${ip}`, outcome);
-                  return res.status(400).send('Turnstile verification failed. Please try again.');
-              }
-          } catch (error) {
-              this.logger.error('Turnstile verification error:', { error: String(error) });
-              return res.status(500).send('Internal server error during verification.');
-          }
+      const captchaResult = await this.verifyCaptcha(req, ip);
+      if (!captchaResult.success) {
+          return res.status(400).send(captchaResult.message || 'Captcha verification failed.');
       }
 
-      // Rate Limiting Logic
-      const attempt = this.loginAttempts.get(ip) || { count: 0, lastAttempt: 0 };
-      
-      // Reset count if last attempt was more than 15 minutes ago
-      if (now - attempt.lastAttempt > 15 * 60 * 1000) {
+      const now = Date.now();
+      let attempt = this.loginAttempts.get(ip);
+
+      if (!attempt) {
+        attempt = { count: 0, lastAttempt: now };
+        this.loginAttempts.set(ip, attempt);
+      }
+
+      // Reset count if last attempt was more than 2 minutes ago
+      if (now - attempt.lastAttempt > 2 * 60 * 1000) {
           attempt.count = 0;
       }
 
-      if (attempt.count >= 5) {
-          this.logger.warn(`Blocked login attempt from blocked IP: ${ip}`);
-          return res.status(429).send('Too many failed login attempts. Please try again later.');
+      if (attempt.count >= 8) {
+          this.logToBlacklist(ip, String(username));
+          return res.status(403).send('由于您多次尝试登录失败，已被系统拉入登录黑名单，如需要解除，请联系服务器管理员');
       }
 
       // Timing Safe Comparison
@@ -225,6 +355,82 @@ export class HttpServer {
         }
         this.protocolHandler.sendServerMessage(roomId, "【系统】"+content);
         return res.json({ success: true });
+    });
+
+    this.app.post('/api/admin/broadcast', (req, res) => {
+        if (!(req.session as AdminSession).isAdmin) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        const { content, target } = req.body;
+        if (!content) {
+            return res.status(400).json({ error: 'Missing content' });
+        }
+        
+        const targetIds = (target && target.startsWith('#')) 
+            ? target.substring(1).split(',').map((id: string) => id.trim()) 
+            : null;
+
+        const rooms = this.roomManager.listRooms();
+        let sentCount = 0;
+        rooms.forEach(room => {
+            if (!targetIds || targetIds.includes(room.id)) {
+                this.protocolHandler.sendServerMessage(room.id, "【全服播报】" + content);
+                sentCount++;
+            }
+        });
+        
+        return res.json({ success: true, roomCount: sentCount });
+    });
+
+    this.app.post('/api/admin/bulk-action', (req, res) => {
+        if (!(req.session as AdminSession).isAdmin) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        const { action, value, target } = req.body;
+        const rooms = this.roomManager.listRooms();
+        
+        const targetIds = (target && target.startsWith('#')) 
+            ? target.substring(1).split(',').map((id: string) => id.trim()) 
+            : null;
+
+        let count = 0;
+        rooms.forEach(room => {
+            if (targetIds && !targetIds.includes(room.id)) return;
+
+            switch (action) {
+                case 'close_all':
+                    this.protocolHandler.closeRoomByAdmin(room.id);
+                    count++;
+                    break;
+                case 'lock_all':
+                    if (!room.locked) this.protocolHandler.toggleRoomLock(room.id);
+                    count++;
+                    break;
+                case 'unlock_all':
+                    if (room.locked) this.protocolHandler.toggleRoomLock(room.id);
+                    count++;
+                    break;
+                case 'set_max_players':
+                    if (value && !isNaN(Number(value))) {
+                        this.protocolHandler.setRoomMaxPlayers(room.id, Number(value));
+                        count++;
+                    }
+                    break;
+            }
+        });
+
+        // Handle global non-room actions
+        if (!targetIds) {
+            if (action === 'disable_room_creation') {
+                this.roomManager.setGlobalLocked(true);
+                return res.json({ success: true });
+            } else if (action === 'enable_room_creation') {
+                this.roomManager.setGlobalLocked(false);
+                return res.json({ success: true });
+            }
+        }
+
+        return res.json({ success: true, affectedCount: count });
     });
 
     this.app.post('/api/admin/kick-player', (req, res) => {
@@ -348,9 +554,14 @@ export class HttpServer {
     });
 
     // Public Status API for external servers
-    this.app.get('/api/status', (_req, res) => {
+    this.app.get('/api/status', (req, res) => {
+        const isAdmin = (req.session as AdminSession).isAdmin ?? false;
         const rooms = this.roomManager.listRooms()
             .filter(room => {
+                // Admin can see everything
+                if (isAdmin) {
+                    return true;
+                }
                 // Mode 1: Public Web Only (Whitelist)
                 if (this.config.enablePubWeb) {
                   return room.id.startsWith(this.config.pubPrefix);
@@ -373,7 +584,11 @@ export class HttpServer {
                     name: room.name,
                     playerCount: room.players.size,
                     maxPlayers: room.maxPlayers,
-                    state: room.state,
+                    state: {
+                        ...room.state,
+                        chartId: (room.state as any).chartId ?? room.selectedChart?.id ?? null,
+                        chartName: room.selectedChart?.name ?? null,
+                    },
                     locked: room.locked,
                     cycle: room.cycle,
                     players: players,
@@ -395,7 +610,11 @@ export class HttpServer {
     return this.server;
   }
 
-  public start(): Promise<void> {
+  public getSessionParser(): express.RequestHandler {
+    return this.sessionParser;
+  }
+
+  public async start(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.server.listen(this.config.webPort, () => {
         this.logger.info(`HTTP server listening on port ${this.config.webPort}`);

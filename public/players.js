@@ -20,7 +20,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateTotalPlayers(count) {
         currentTotalPlayers = count;
-        totalPlayersDiv.innerHTML = `<strong>Total Players Online:</strong> ${count}`;
+        if (!totalPlayersDiv) return;
+        const content = `<strong>${I18n.t('common.total_players')}:</strong> ${count}`;
+        
+        // Always link to home in players.html as it replaces the back button
+        const homeLink = `<a href="/">${content}</a>`;
+        
+        if (isAdmin) {
+            totalPlayersDiv.innerHTML = `${homeLink}<a href="/logout" class="logout-icon" title="Logout">&#10145;&#65039;</a>`;
+        } else {
+            totalPlayersDiv.innerHTML = homeLink;
+        }
     }
 
     function connectWebSocket() {
@@ -33,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.onopen = () => {
             console.log('WebSocket connection established');
             if (connectionStatus) {
-                connectionStatus.textContent = 'Connected';
+                connectionStatus.textContent = I18n.t('common.connected');
                 connectionStatus.className = 'connection-status connected';
             }
             checkAdminStatus();
@@ -53,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.onclose = () => {
             console.log('WebSocket connection closed. Reconnecting in 3 seconds...');
             if (connectionStatus) {
-                connectionStatus.textContent = 'Disconnected';
+                connectionStatus.textContent = I18n.t('common.disconnected');
                 connectionStatus.className = 'connection-status disconnected';
             }
             setTimeout(connectWebSocket, 3000);
@@ -64,7 +74,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch('/api/all-players');
             if (response.status === 403) {
-                playerListDiv.innerHTML = '<p>Access Denied. You must be an admin to view this page. <a href="/admin">Login</a></p>';
+                playerListDiv.innerHTML = `<p>Access Denied. You must be an admin to view this page. <a href="/admin" data-i18n="admin.login">Login</a></p>`;
+                I18n.applyTranslations(); // Re-apply for the new link
                 return;
             }
             if (!response.ok) {
@@ -74,15 +85,20 @@ document.addEventListener('DOMContentLoaded', () => {
             renderPlayers(players);
         } catch (error) {
             console.error('Error fetching all players:', error);
-            playerListDiv.innerHTML = `<p>Error loading players: ${error.message}</p>`;
+            playerListDiv.innerHTML = `<p>${I18n.t('common.error')} loading players: ${error.message}</p>`;
         }
     }
 
     function renderPlayers(players) {
-        if (!players || players.length === 0) {
-            playerListDiv.innerHTML = '<p>No players are currently online.</p>';
-            return;
-        }
+    if (players.length === 0) {
+        playerListDiv.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">👥</div>
+                <div class="empty-state-text">${I18n.t('players.no_players')}</div>
+            </div>
+        `;
+        return;
+    }
 
         // Filter out bots (ID -1) and Sort
         const sortedPlayers = players
@@ -103,8 +119,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const playerListHtml = sortedPlayers.map(p => {
             const locationHtml = p.roomId 
-                ? `In Room: <a href="room.html?id=${p.roomId}">${p.roomName}</a>`
-                : 'In Lobby';
+                ? `${I18n.t('players.in_room')}: <a href="room.html?id=${p.roomId}" class="room-go-btn">${p.roomName || p.roomId}</a>`
+                : `<span class="lobby-tag">${I18n.t('players.in_lobby')}</span>`;
             
             let userIcon = '&#128100;'; // Regular Person
             let nameClass = 'player-name';
@@ -115,13 +131,15 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (p.isAdmin) {
                 userIcon = '&#128110;'; // Police Officer
                 nameClass += ' admin';
+            } else {
+                nameClass += ' name-member';
             }
             
             return `
             <li class="player-item">
                 <div class="player-info-left">
-                    <span class="player-icon"></span>
-                    <a class="${nameClass}" href="https://phira.moe/user/${p.id}" target="_blank">${userIcon} ${p.name} (ID: ${p.id})</a>
+                    <span class="player-icon">${userIcon}</span>
+                    <a class="${nameClass}" href="https://phira.moe/user/${p.id}" target="_blank">${p.name} (ID: ${p.id})</a>
                 </div>
                 <span>${locationHtml}</span>
             </li>
@@ -129,13 +147,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
 
         playerListDiv.innerHTML = `
-            <h3>All Online Players (${players.length})</h3>
+            <h3>${I18n.t('players.all_players')} (${players.length})</h3>
             <ul class="player-list">
                 ${playerListHtml}
             </ul>
         `;
     }
 
-    fetchAllPlayers();
-    connectWebSocket();
+    if (I18n.isReady) {
+        fetchAllPlayers();
+        connectWebSocket();
+    } else {
+        document.addEventListener('i18nReady', () => {
+            fetchAllPlayers();
+            connectWebSocket();
+        });
+    }
 });

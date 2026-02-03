@@ -6,30 +6,66 @@
     <title>All Players - FunXLink Studio Phira Server</title>
     <link rel="icon" href="logo.png" type="image/png">
     <link rel="stylesheet" href="style.css">
+    <script src="i18n.js"></script>
 </head>
 <body>
+    <script>(function(){
+        const t=localStorage.getItem('theme');if(t==='dark')document.body.classList.add('dark-mode');
+        I18n.init();
+    })()</script>
     <div class="container">
         <header>
-            <h1>Online Players</h1>
+            <h1 data-i18n="players.title">Online Players</h1>
             <div id="total-players"></div>
             <div class="connection-status" id="connection-status">Connecting...</div>
-            <a href="/" class="back-link">Back to Home</a>
         </header>
         <main>
-            <div id="all-players-list">
+            <div id="all-players-list" data-i18n="common.loading">
                 Loading players...
             </div>
         </main>
         <footer>
-            <p>Game Server IP:</p>
-            <div class="server-ip-container" id="copy-ip" title="Click to copy">
+            <p data-i18n="common.server_ip">Game Server IP:</p>
+            <div class="server-ip-container" id="copy-ip" data-i18n-title="common.click_to_copy">
                 <code id="server-ip">phira.funxlink.fun:19723</code>
                 <span class="copy-icon">&#128203;</span>
+            </div>
+            <div class="footer-controls">
+                <button id="theme-toggle" class="theme-toggle-btn">
+                    <span id="theme-icon" class="theme-icon">🌙</span>
+                    <span id="theme-text" data-i18n="common.dark_mode">Dark Mode</span>
+                </button>
+                <button id="lang-toggle" class="lang-toggle-btn" onclick="I18n.toggleLanguage()">
+                    <span>🌐</span>
+                    <span id="lang-toggle-text">English</span>
+                </button>
             </div>
         </footer>
     </div>
     <script src="players.js"></script>
     <script>
+        // Theme Toggle Logic
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const themeText = document.getElementById('theme-text');
+        const body = document.body;
+
+        function updateThemeUI(isDark) {
+            if (!I18n.isReady) return;
+            themeIcon.textContent = isDark ? '☀️' : '🌙';
+            themeText.textContent = isDark ? I18n.t('common.light_mode') : I18n.t('common.dark_mode');
+        }
+
+        document.addEventListener('i18nReady', () => {
+            updateThemeUI(body.classList.contains('dark-mode'));
+        });
+
+        themeToggle.addEventListener('click', () => {
+            const isDark = body.classList.toggle('dark-mode');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            updateThemeUI(isDark);
+        });
+
         document.getElementById('copy-ip').addEventListener('click', () => {
             const ip = document.getElementById('server-ip').textContent;
             navigator.clipboard.writeText(ip).then(() => {

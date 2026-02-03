@@ -49,7 +49,7 @@ export const createApplication = (overrides?: Partial<ServerConfig>): Applicatio
 
   const roomManager = new InMemoryRoomManager(roomLogger, config.roomSize, broadcastRooms);
   const authService = new PhiraAuthService(config.phiraApiUrl, authLogger);
-  const protocolHandler = new ProtocolHandler(roomManager, authService, protocolLogger, config.serverName, broadcastStats);
+  const protocolHandler = new ProtocolHandler(roomManager, authService, protocolLogger, config.serverName, config.phiraApiUrl, broadcastStats);
   
   const networkServer = new NetworkServer(config, logger, protocolHandler);
   let httpServer: HttpServer | undefined;
@@ -61,7 +61,14 @@ export const createApplication = (overrides?: Partial<ServerConfig>): Applicatio
         roomManager,
         protocolHandler,
       );
-      webSocketServer = new WebSocketServer(httpServer.getInternalServer(), roomManager, protocolHandler, config, webSocketLogger);
+      webSocketServer = new WebSocketServer(
+        httpServer.getInternalServer(),
+        roomManager,
+        protocolHandler,
+        config,
+        webSocketLogger,
+        httpServer.getSessionParser()
+      );
   } else {
       logger.info('Web server is disabled via configuration.');
   }
