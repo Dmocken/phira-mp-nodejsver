@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - FunXLink Studio Phira Server</title>
+    <link rel="icon" href="logo.png" type="image/png">
+    <link rel="stylesheet" href="style.css">
+    <script src="i18n.js"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: var(--bg-color);
+            margin: 0;
+            color: var(--text-color);
+        }
+        .login-card {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--card-shadow);
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid var(--border-color);
+        }
+        .login-card h2 {
+            margin-top: 0;
+            color: var(--header-color);
+            text-align: center;
+            margin-bottom: 25px;
+            font-weight: 800;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            box-sizing: border-box;
+            font-size: 14px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            transition: var(--transition);
+        }
+        .form-group input:focus {
+            border-color: var(--primary-color);
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+        .captcha-container {
+            margin: 20px 0;
+            min-height: 40px; 
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 700;
+            transition: var(--transition);
+        }
+        .login-btn:hover:not(:disabled) {
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+        .login-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .admin-footer {
+            margin-top: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+        .back-link {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+        .back-link:hover {
+            color: var(--primary-hover);
+        }
+    </style>
+</head>
+<body>
+    <script>(function(){
+        const t=localStorage.getItem('theme');if(t==='dark')document.body.classList.add('dark-mode');
+        I18n.init();
+    })()</script>
+    <div class="login-card">
+        <h2 data-i18n="admin.login_title">Admin Login</h2>
+        <form action="/login" method="POST" id="login-form">
+            <div class="form-group">
+                <label for="username" data-i18n="admin.username">Username</label>
+                <input type="text" id="username" name="username" required autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label for="password" data-i18n="admin.password">Password</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
+            </div>
+            
+            <div class="captcha-container" id="captcha-widget"></div>
+            
+            <input type="hidden" name="captchaVerifyParam" id="captchaVerifyParam">
+            <button type="submit" id="login-btn" class="login-btn" disabled data-i18n="admin.login_btn">Login</button>
+        </form>
+        
+        <div class="admin-footer">
+            <a href="/" class="back-link" data-i18n="common.back_home">&larr; Back to Home</a>
+            
+            <div class="footer-controls" style="margin-top: 0;">
+                <button id="theme-toggle" class="theme-toggle-btn" style="padding: 8px 16px; font-size: 0.8rem;">
+                    <span id="theme-icon" class="theme-icon">🌙</span>
+                    <span id="theme-text">Dark</span>
+                </button>
+                <button id="lang-toggle" class="lang-toggle-btn" style="padding: 8px 16px; font-size: 0.8rem;" onclick="I18n.toggleLanguage()">
+                    <span>🌐</span>
+                    <span id="lang-toggle-text">English</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const themeText = document.getElementById('theme-text');
+        
+        function updateThemeUI(isDark) {
+            if (!I18n.isReady) return; // Wait for i18n
+            themeIcon.textContent = isDark ? '☀️' : '🌙';
+            themeText.textContent = isDark ? I18n.t('common.light_mode') : I18n.t('common.dark_mode');
+        }
+
+        // Listen for i18n to be ready to set initial theme text
+        document.addEventListener('i18nReady', () => {
+            updateThemeUI(document.body.classList.contains('dark-mode'));
+        });
+
+        themeToggle.addEventListener('click', () => {
+            const isDark = document.body.classList.toggle('dark-mode');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            updateThemeUI(isDark);
+        });
+
+        async function initCaptcha() {
+            const loginBtn = document.getElementById('login-btn');
+            const captchaInput = document.getElementById('captchaVerifyParam');
+            const captchaWidget = document.getElementById('captcha-widget');
+
+            try {
+                const response = await fetch('/api/config/public');
+                const config = await response.json();
+
+                if (config.captchaProvider === 'aliyun') {
+                    const captchaLang = I18n.currentLang === 'zh' ? 'cn' : 'en';
+                    window.AliyunCaptchaConfig = { region: 'cn', prefix: config.aliyunCaptchaPrefix };
+                    const script = document.createElement('script');
+                    script.src = "https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js";
+                    script.onload = () => {
+                        window.initAliyunCaptcha({
+                            SceneId: config.aliyunCaptchaSceneId,
+                            prefix: config.aliyunCaptchaPrefix,
+                            region: 'cn',
+                            language: captchaLang,
+                            mode: 'embed',
+                            element: '#captcha-widget',
+                            immediate: true,
+                            captchaVerifyCallback: function(p) {
+                                captchaInput.value = p;
+                                loginBtn.disabled = false;
+                                setTimeout(() => { captchaWidget.style.display = 'none'; }, 500);
+                            },
+                            errorCallback: () => {
+                                captchaWidget.innerHTML = `<p style="color:var(--danger-color); font-size:0.8rem;">${I18n.t('admin.captcha_error')}</p>`;
+                            }
+                        });
+                    };
+                    document.head.appendChild(script);
+                } else {
+                    loginBtn.disabled = false;
+                    captchaWidget.style.display = 'none';
+                }
+            } catch (error) { loginBtn.disabled = false; }
+        }
+
+        document.addEventListener('DOMContentLoaded', initCaptcha);
+    </script>
+</body>
+</html>

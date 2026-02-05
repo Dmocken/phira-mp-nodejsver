@@ -86,7 +86,10 @@ export type ClientCommand =
 export interface UserInfo {
   id: number;
   name: string;
+  avatar?: string;
   monitor: boolean;
+  rks?: number;
+  bio?: string;
 }
 
 export interface PlayerScore {
