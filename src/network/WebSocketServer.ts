@@ -139,7 +139,7 @@ export class WebSocketServer {
             return;
         }
 
-      const details = this.getSanitizedRoomDetails(room);
+      const details = this.getSanitizedRoomDetails(room, isAdmin);
       const message: WebSocketMessage = {
         type: 'roomDetails',
         payload: details,
@@ -190,7 +190,7 @@ export class WebSocketServer {
       });
   }
 
-  private getSanitizedRoomDetails(room: Room) {
+  private getSanitizedRoomDetails(room: Room, isAdmin: boolean = false) {
     const players = Array.from(room.players.values()).map(p => ({
         id: p.user.id,
         name: p.user.name,
@@ -246,7 +246,18 @@ export class WebSocketServer {
         }),
         players: players,
         otherRooms: this.roomManager.listRooms()
-            .filter(r => r.id !== room.id)
+            .filter(r => {
+                if (r.id === room.id) return false;
+                if (isAdmin) return true;
+                // Apply same visibility rules as room list
+                if (this.config.enablePubWeb) {
+                  return r.id.startsWith(this.config.pubPrefix);
+                }
+                if (this.config.enablePriWeb) {
+                  return !r.id.startsWith(this.config.priPrefix);
+                }
+                return true;
+            })
             .map(r => ({
                 id: r.id,
                 name: r.name,
