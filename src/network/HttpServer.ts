@@ -28,7 +28,7 @@ export class HttpServer {
   private readonly blacklistedIps = new Set<string>();
   private aliyunCaptchaClient?: $Captcha20230305.default;
   private sessionParser: express.RequestHandler;
-  private readonly blacklistFile = path.join(__dirname, '../../login_blacklist.log');
+  private readonly blacklistFile = path.join(process.cwd(), 'logs', 'login_blacklist.log');
   
   constructor(
     private readonly config: ServerConfig,

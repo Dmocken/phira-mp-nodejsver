@@ -3,6 +3,9 @@
  * Copyright (c) 2024
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogMetadata {
@@ -45,57 +48,69 @@ export class ConsoleLogger implements Logger {
 
   constructor(private readonly context: string = 'app', level: string | undefined = 'info') {
     this.minimumLevel = normaliseLevel(level);
+    
+    // Ensure logs directory exists
+    const logDir = path.join(process.cwd(), 'logs');
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
   }
 
   info(message: string, metadata: LogMetadata = {}): void {
     if (!this.shouldLog('info')) {
       return;
     }
-    if (metadata && Object.keys(metadata).length > 0) {
-      console.info(this.formatMessage('INFO', message), metadata);
-    } else {
-      console.info(this.formatMessage('INFO', message));
-    }
+    const formatted = this.formatMessage('INFO', message, metadata);
+    console.info(formatted.console);
+    this.writeToFile(formatted.file);
   }
 
   warn(message: string, metadata: LogMetadata = {}): void {
     if (!this.shouldLog('warn')) {
       return;
     }
-    if (metadata && Object.keys(metadata).length > 0) {
-      console.warn(this.formatMessage('WARN', message), metadata);
-    } else {
-      console.warn(this.formatMessage('WARN', message));
-    }
+    const formatted = this.formatMessage('WARN', message, metadata);
+    console.warn(formatted.console);
+    this.writeToFile(formatted.file);
   }
 
   error(message: string, metadata: LogMetadata = {}): void {
     if (!this.shouldLog('error')) {
       return;
     }
-    if (metadata && Object.keys(metadata).length > 0) {
-      console.error(this.formatMessage('ERROR', message), metadata);
-    } else {
-      console.error(this.formatMessage('ERROR', message));
-    }
+    const formatted = this.formatMessage('ERROR', message, metadata);
+    console.error(formatted.console);
+    this.writeToFile(formatted.file);
   }
 
   debug(message: string, metadata: LogMetadata = {}): void {
     if (!this.shouldLog('debug')) {
       return;
     }
-    if (metadata && Object.keys(metadata).length > 0) {
-      console.debug(this.formatMessage('DEBUG', message), metadata);
-    } else {
-      console.debug(this.formatMessage('DEBUG', message));
-    }
+    const formatted = this.formatMessage('DEBUG', message, metadata);
+    console.debug(formatted.console);
+    this.writeToFile(formatted.file);
   }
 
   private shouldLog(level: LogLevel): boolean {
     return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[this.minimumLevel];
   }
 
-  private formatMessage(level: string, message: any): string {
+  private getLogFilePath(): string {
+    const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    return path.join(process.cwd(), 'logs', `server-${date}.log`);
+  }
+
+  private writeToFile(line: string): void {
+    try {
+      const logFile = this.getLogFilePath();
+      fs.appendFileSync(logFile, line + '\n');
+    } catch (err) {
+      console.error('Failed to write to log file:', err);
+    }
+  }
+
+  private formatMessage(level: string, message: any, metadata: LogMetadata): { console: string; file: string } {
     const timestamp = new Date().toISOString();
     let color = COLOR_CODES.RESET;
     if (level === 'DEBUG') color = COLOR_CODES.DEBUG;
@@ -117,8 +132,11 @@ export class ConsoleLogger implements Logger {
       msgStr = message;
     }
 
-    return msgStr
-      ? `[${timestamp}]${color}[${this.context}][${level}] ${msgStr}${COLOR_CODES.RESET}`
-      : `[${timestamp}]${color}[${this.context}][${level}]${COLOR_CODES.RESET}`;
+    const metaStr = metadata && Object.keys(metadata).length > 0 ? ' ' + JSON.stringify(metadata) : '';
+    
+    return {
+      console: `[${timestamp}]${color}[${this.context}][${level}] ${msgStr}${metaStr}${COLOR_CODES.RESET}`,
+      file: `[${timestamp}] [${this.context}] [${level}] ${msgStr}${metaStr}`
+    };
   }
 }
