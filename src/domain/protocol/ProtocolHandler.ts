@@ -54,7 +54,7 @@ export class ProtocolHandler {
         user: -1,
         content: content,
       });
-      this.logger.info(`Admin sent server message to room ${roomId}: ${content}`);
+      this.logger.info(`管理员向房间 “${roomId}” 发送了消息: ${content}`);
     }
   }
 
@@ -115,7 +115,7 @@ export class ProtocolHandler {
       }
     }
 
-    this.logger.info(`Admin kicked player ${userId} (${userName}) from room ${room.id}`);
+    this.logger.info(`管理员已将玩家 ${userId} (${userName}) 从房间 “${room.id}” 踢出`);
     return true;
   }
 
@@ -127,7 +127,7 @@ export class ProtocolHandler {
 
     if (!room.selectedChart) return false;
 
-    this.logger.info(`Admin forcing game start in room ${roomId}`);
+    this.logger.info(`管理员强制开始房间 “${roomId}” 的对局`);
 
     // Process players
     for (const playerInfo of room.players.values()) {
@@ -197,7 +197,7 @@ export class ProtocolHandler {
       content: `【系统】管理员已${newLockState ? '锁定' : '解锁'}了房间`,
     });
 
-    this.logger.info(`Admin toggled lock for room ${roomId} to ${newLockState}`);
+    this.logger.info(`管理员已将房间 “${roomId}” 的锁定状态修改为: ${newLockState}`);
     return true;
   }
 
@@ -214,7 +214,7 @@ export class ProtocolHandler {
       content: `【系统】管理员已将房间最大人数修改为 ${maxPlayers}`,
     });
 
-    this.logger.info(`Admin set max players for room ${roomId} to ${maxPlayers}`);
+    this.logger.info(`管理员已将房间 “${roomId}” 的最大人数修改为: ${maxPlayers}`);
     return true;
   }
 
@@ -236,7 +236,7 @@ export class ProtocolHandler {
 
     // 2. Actually delete the room
     this.roomManager.deleteRoom(roomId);
-    this.logger.info(`Admin forcibly closed room ${roomId}`);
+    this.logger.info(`管理员强制关闭了房间 “${roomId}”`);
     return true;
   }
 
@@ -261,7 +261,7 @@ export class ProtocolHandler {
       content: `【系统】管理员已将房间模式更改为 ${modeName}`,
     });
 
-    this.logger.info(`Admin toggled cycle mode for room ${roomId} to ${newCycleState}`);
+    this.logger.info(`管理员已将房间 “${roomId}” 的循环状态切换为: ${newCycleState}`);
     return true;
   }
 
@@ -280,7 +280,7 @@ export class ProtocolHandler {
                 headers: { 'User-Agent': 'PhiraServer/1.0' }
             });
             if (response.ok) {
-                const data = await response.json();
+                const data = await response.json() as any;
                 blacklistDetails.push(`${data.name} (${id})`);
             } else {
                 blacklistDetails.push(`未知用户 (${id})`);
@@ -308,12 +308,12 @@ export class ProtocolHandler {
     const currentPlayers = Array.from(room.players.values());
     for (const player of currentPlayers) {
       if (userIds.includes(player.user.id)) {
-        this.logger.info(`Admin set blacklist: kicking player ${player.user.id} from room ${roomId}`);
+        this.logger.info(`管理员在房间 “${roomId}” 强制踢出黑名单玩家: ${player.user.id}`);
         this.kickPlayer(player.user.id);
       }
     }
 
-    this.logger.info(`Admin updated blacklist for room ${roomId} with ${userIds.length} IDs`);
+    this.logger.info(`管理员更新了房间 “${roomId}” 的黑名单，当前人数: ${userIds.length}`);
     return true;
   }
 
@@ -332,7 +332,7 @@ export class ProtocolHandler {
                 headers: { 'User-Agent': 'PhiraServer/1.0' }
             });
             if (response.ok) {
-                const data = await response.json();
+                const data = await response.json() as any;
                 whitelistDetails.push(`${data.name} (${id})`);
             } else {
                 whitelistDetails.push(`未知用户 (${id})`);
@@ -363,13 +363,13 @@ export class ProtocolHandler {
             const userId = player.user.id;
             // Don't kick the room owner or the server user (-1) or those in whitelist
             if (userId !== room.ownerId && userId !== -1 && !userIds.includes(userId)) {
-                this.logger.info(`Admin set whitelist: kicking player ${userId} from room ${roomId} (not in whitelist)`);
+                this.logger.info(`管理员在房间 “${roomId}” 强制踢出非白名单玩家: ${userId}`);
                 this.kickPlayer(userId);
             }
         }
     }
 
-    this.logger.info(`Admin updated whitelist for room ${roomId} with ${userIds.length} IDs`);
+    this.logger.info(`管理员更新了房间 “${roomId}” 的白名单，当前人数: ${userIds.length}`);
     return true;
   }
 
@@ -394,16 +394,8 @@ export class ProtocolHandler {
   ): void {
     sendResponse(response);
 
-    const logPayload = {
-      connectionId,
-      responseType: ServerCommandType[response.type],
-      timestamp: Date.now(),
-    };
-
-    if (response.type === ServerCommandType.Pong) {
-      this.logger.debug('已将请求发送给客户端：', logPayload);
-    } else {
-      this.logger.debug('已将请求发送给客户端：', logPayload);
+    if (response.type !== ServerCommandType.Pong) {
+        this.logger.debug(`向客户端发送响应: ${connectionId} (${ServerCommandType[response.type]})`);
     }
   }
 
@@ -432,16 +424,13 @@ export class ProtocolHandler {
       const callback = this.broadcastCallbacks.get(playerInfo.connectionId);
       if (callback) {
         callback(command);
-        this.logger.debug('广播命令给客户端：', {
-          connectionId: playerInfo.connectionId,
-          commandType: ServerCommandType[command.type],
-        });
+        this.logger.debug(`广播命令给客户端: ${playerInfo.connectionId} (${ServerCommandType[command.type]})`);
       }
     }
   }
 
   private async fetchChartInfo(chartId: number): Promise<ChartInfo> {
-    this.logger.debug(`Fetching chart info for ID: ${chartId}`);
+    this.logger.debug(`正在获取谱面信息: ${chartId}`);
     
     const response = await fetch(`https://phira.5wyxi.com/chart/${chartId}`, {
         headers: { 'User-Agent': 'PhiraServer/1.0' }
@@ -451,17 +440,13 @@ export class ProtocolHandler {
       throw new Error(`API返回了一个神秘的状态： ${response.status}`);
     }
     
-    const chartData = await response.json();
+    const chartData = await response.json() as any;
     
     // Explicitly extract uploader ID as a number
     const rawUploader = chartData.uploader ?? chartData.uploaderId;
     const uploaderId = rawUploader !== undefined && rawUploader !== null ? Number(rawUploader) : undefined;
     
-    this.logger.debug(`Chart API Response for ID ${chartId}:`, { 
-        name: chartData.name, 
-        uploaderId: uploaderId,
-        hasRawUploader: rawUploader !== undefined
-    });
+    this.logger.debug(`谱面 API 响应: ${chartData.name} (ID: ${chartId}, 上传者: ${uploaderId})`);
     
     let uploaderInfo;
     if (uploaderId && !isNaN(uploaderId)) {
@@ -470,7 +455,7 @@ export class ProtocolHandler {
                 headers: { 'User-Agent': 'PhiraServer/1.0' }
             });
             if (userResponse.ok) {
-                const userData = await userResponse.json();
+                const userData = await userResponse.json() as any;
                 uploaderInfo = {
                     id: userData.id,
                     name: userData.name,
@@ -478,14 +463,12 @@ export class ProtocolHandler {
                     rks: userData.rks ?? 0,
                     bio: userData.bio,
                 };
-                this.logger.debug(`Successfully fetched info for uploader ${uploaderId}: ${userData.name}`);
+                this.logger.debug(`成功获取上传者信息: ${userData.name} (ID: ${uploaderId})`);
             } else {
-                this.logger.warn(`User API returned ${userResponse.status} for ID ${uploaderId}`);
+                this.logger.warn(`获取上传者信息失败: API 返回 ${userResponse.status} (ID: ${uploaderId})`);
             }
         } catch (error) {
-            this.logger.error(`Error fetching uploader info for ID ${uploaderId}:`, { 
-                error: error instanceof Error ? error.message : String(error) 
-            });
+            this.logger.error(`获取上传者信息出错: ${error instanceof Error ? error.message : String(error)} (ID: ${uploaderId})`);
         }
     }
 
@@ -506,10 +489,7 @@ export class ProtocolHandler {
   }
 
   handleConnection(connectionId: string, closeConnection?: () => void): void {
-    this.logger.debug('建立连接：', {
-      connectionId,
-      totalRooms: this.roomManager.count(),
-    });
+    this.logger.debug(`建立新连接: ${connectionId} (当前房间总数: ${this.roomManager.count()})`);
     
     if (closeConnection) {
       this.connectionClosers.set(connectionId, closeConnection);
@@ -529,11 +509,7 @@ export class ProtocolHandler {
         if (wasPlaying) {
           const player = room.players.get(session.userId);
           if (player && !player.isFinished) {
-            this.logger.info('[断线] 玩家游戏中断线并标记为放弃', {
-              connectionId,
-              userId: session.userId,
-              roomId: room.id,
-            });
+            this.logger.info(`[断线] 玩家 “${session.userInfo.name}” (ID: ${session.userId}) 在房间 “${room.id}” 游戏中途断线，已标记为放弃`);
 
             player.isFinished = true;
             player.score = {
@@ -571,10 +547,7 @@ export class ProtocolHandler {
       this.onSessionChange?.();
     }
     this.broadcastCallbacks.delete(connectionId);
-    this.logger.info('[断线] 连接断开', { 
-      connectionId,
-      userId: session?.userId,
-    });
+    this.logger.info(`[断线] 连接已断开: ${connectionId}${session ? ` (用户: ${session.userInfo.name} ID: ${session.userId})` : ''}`);
   }
 
   handleMessage(
@@ -582,10 +555,7 @@ export class ProtocolHandler {
     message: ClientCommand,
     sendResponse: (response: ServerCommand) => void,
   ): void {
-    this.logger.debug('收到信息：', {
-      connectionId,
-      messageType: ClientCommandType[message.type],
-    });
+    this.logger.debug(`收到消息: ${connectionId} (类型: ${ClientCommandType[message.type]})`);
 
     this.broadcastCallbacks.set(connectionId, sendResponse);
 
@@ -645,10 +615,7 @@ export class ProtocolHandler {
         break;
 
       default:
-        this.logger.warn('未知的指令类型：', {
-          connectionId,
-          messageType: ClientCommandType[message.type],
-        });
+        this.logger.warn(`收到未知的指令类型: ${connectionId} (类型: ${ClientCommandType[message.type]})`);
         break;
     }
   }
@@ -659,16 +626,14 @@ export class ProtocolHandler {
             headers: { 'User-Agent': 'PhiraServer/1.0' }
         });
         if (response.ok) {
-            const userData = await response.json();
+            const userData = await response.json() as any;
             return {
                 rks: userData.rks ?? 0,
                 bio: userData.bio,
             };
         }
     } catch (error) {
-        this.logger.error(`Error fetching detailed info for user ${userId}:`, { 
-            error: error instanceof Error ? error.message : String(error) 
-        });
+        this.logger.error(`获取用户详细信息失败: ${error instanceof Error ? error.message : String(error)} (ID: ${userId})`);
     }
     return {};
   }
@@ -678,10 +643,10 @@ export class ProtocolHandler {
     token: string,
     sendResponse: (response: ServerCommand) => void,
   ): void {
-    this.logger.debug('验证尝试：', { connectionId, tokenLength: token.length });
+    this.logger.debug(`正在尝试验证连接: ${connectionId} (Token长度: ${token.length})`);
 
     if (this.sessions.has(connectionId)) {
-      this.logger.warn('重复验证尝试：', { connectionId });
+      this.logger.warn(`重复验证尝试: ${connectionId}`);
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Authenticate,
         result: { ok: false, error: '重复的验证' },
@@ -690,7 +655,7 @@ export class ProtocolHandler {
     }
 
     if (token.length !== 20) {
-      this.logger.warn('非法的 Token 长度', { connectionId, tokenLength: token.length });
+      this.logger.warn(`非法的 Token 长度: ${connectionId} (长度: ${token.length})`);
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Authenticate,
         result: { ok: false, error: '非法的 Token' },
@@ -717,13 +682,7 @@ export class ProtocolHandler {
           if (existingRoom) {
             // 玩家在任何房间中，都应该迁移连接而不是移除
             const roomStatus = existingRoom.state.type;
-            this.logger.info('[重连迁移] 保留房间成员', {
-              userId: userInfo.id,
-              roomId: existingRoom.id,
-              roomStatus,
-              oldConnectionId: existingConnectionId,
-              newConnectionId: connectionId,
-            });
+            this.logger.info(`[重连迁移] 玩家 ${userInfo.id} 在房间 “${existingRoom.id}” (${roomStatus})，正在迁移连接: ${existingConnectionId} -> ${connectionId}`);
             
             // 执行连接迁移，保留游戏状态
             this.roomManager.migrateConnection(userInfo.id, existingConnectionId, connectionId);
@@ -746,11 +705,7 @@ export class ProtocolHandler {
             }
           } else {
             // 玩家不在房间中，正常踢出
-            this.logger.warn('用户已在其他连接登录，踢出旧连接', {
-              userId: userInfo.id,
-              oldConnectionId: existingConnectionId,
-              newConnectionId: connectionId,
-            });
+            this.logger.warn(`用户 ${userInfo.id} 已在其他连接登录，正在踢出旧连接: ${existingConnectionId} -> ${connectionId}`);
             
             const closeConnection = this.connectionClosers.get(existingConnectionId);
             if (closeConnection) {
@@ -771,16 +726,12 @@ export class ProtocolHandler {
 
         this.userConnections.set(userInfo.id, connectionId);
 
-        this.logger.debug('验证成功：', {
-          connectionId,
-          userId: userInfo.id,
-          userName: userInfo.name,
-        });
+        this.logger.info(`“${userInfo.name}” 加入了服务器`);
 
         const room = this.roomManager.getRoomByUserId(userInfo.id);
         const roomState = room ? this.toClientRoomState(room, userInfo.id) : null;
 
-        this.logger.debug('发送给客户端的房间状态：', { roomState });
+        this.logger.debug(`已向客户端 ${connectionId} 发送房间状态`);
 
         this.respond(connectionId, sendResponse, {
           type: ServerCommandType.Authenticate,
@@ -798,10 +749,7 @@ export class ProtocolHandler {
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
-        this.logger.warn('验证失败：', {
-          connectionId,
-          error: errorMessage,
-        });
+        this.logger.warn(`验证失败: ${connectionId} - ${errorMessage}`);
 
         this.respond(connectionId, sendResponse, {
           type: ServerCommandType.Authenticate,
@@ -842,11 +790,7 @@ export class ProtocolHandler {
       content: message,
     });
 
-    this.logger.debug('聊天消息已广播', {
-      connectionId,
-      userId: session.userId,
-      message,
-    });
+    this.logger.debug(`已在房间 “${room.id}” 广播来自玩家 “${session.userInfo.name}” 的聊天消息`);
 
     this.respond(connectionId, sendResponse, {
       type: ServerCommandType.Chat,
@@ -886,7 +830,7 @@ export class ProtocolHandler {
         connectionId,
       });
 
-      this.logger.debug(`${session.userId} 创建房间 ${room.id} 成功`);
+      this.logger.mark(`“${session.userInfo.name}” 创建房间 “${room.id}”`);
 
       // 1. Broadcast joins first so client has user info before transitioning
       this.broadcastToRoom(room, {
@@ -925,12 +869,7 @@ export class ProtocolHandler {
     } catch (error) {
       const errorMessage = (error as Error).message;
 
-      this.logger.error('创建房间失败：', {
-        connectionId,
-        userId: session.userId,
-        roomId,
-        error: errorMessage,
-      });
+      this.logger.error(`创建房间失败: ${connectionId} (用户: ${session.userId}, 房间: ${roomId}, 错误: ${errorMessage})`);
 
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.CreateRoom,
@@ -992,7 +931,7 @@ export class ProtocolHandler {
     const success = this.roomManager.addPlayerToRoom(roomId, session.userId, userInfo, connectionId);
 
     if (success) {
-      this.logger.info(`玩家 ${session.userId} 加入房间 ${roomId}`);
+      this.logger.info(`玩家 “${session.userInfo.name}” (ID: ${session.userId}) 加入了房间 “${roomId}”`);
 
       this.broadcastToRoom(room, {
         type: ServerCommandType.OnJoinRoom,
@@ -1016,7 +955,7 @@ export class ProtocolHandler {
         live: room.live,
       };
 
-      this.logger.debug('发送给客户端的加入房间响应：', { joinResponse });
+      this.logger.debug(`已向客户端 ${connectionId} 发送加入房间响应`);
 
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.JoinRoom,
@@ -1052,11 +991,7 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.info('玩家离开房间：', {
-      connectionId,
-      userId: session.userId,
-      roomId: room.id,
-    });
+    this.logger.info(`玩家 “${session.userInfo.name}” (ID: ${session.userId}) 离开了房间 “${room.id}”`);
 
     const wasHost = room.ownerId === session.userId;
     const wasPlaying = room.state.type === 'Playing';
@@ -1129,12 +1064,7 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.info(`${session.userId} 将房间 ${room.id} 锁定模式修改为 ${lock}`, {
-      connectionId,
-      userId: session.userId,
-      roomId: room.id,
-      lock,
-    });
+    this.logger.info(`玩家 “${session.userInfo.name}” (ID: ${session.userId}) 将房间 “${room.id}” 锁定模式修改为: ${lock}`);
 
     this.roomManager.setRoomLocked(room.id, lock);
 
@@ -1180,12 +1110,7 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.info(`${session.userId} 将房间 ${room.id} 循环状态切换为 ${cycle}`, {
-      connectionId,
-      userId: session.userId,
-      roomId: room.id,
-      cycle,
-    });
+    this.logger.info(`玩家 “${session.userInfo.name}” (ID: ${session.userId}) 将房间 “${room.id}” 循环状态切换为: ${cycle}`);
 
     this.roomManager.setRoomCycle(room.id, cycle);
 
@@ -1239,22 +1164,13 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.debug('获取谱面信息：', {
-      connectionId,
-      userId: session.userId,
-      roomId: room.id,
-      chartId,
-    });
+    this.logger.debug(`玩家 “${session.userInfo.name}” (ID: ${session.userId}) 正在房间 “${room.id}” 获取谱面信息: ${chartId}`);
 
     const fetchAndUpdate = async (): Promise<void> => {
       try {
         const chart = await this.fetchChartInfo(chartId);
 
-        this.logger.debug('谱面选择成功', {
-          connectionId,
-          chartId,
-          chartName: chart.name,
-        });
+        this.logger.mark(`“${session.userInfo.name}”（用户ID：${session.userId}）在房间 “${room.id}” 选择了 “${chart.name}”`);
 
         this.roomManager.setRoomChart(room.id, chart);
         this.roomManager.setRoomState(room.id, { type: 'SelectChart', chartId: chart.id });
@@ -1280,11 +1196,7 @@ export class ProtocolHandler {
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'failed to fetch chart';
-        this.logger.error('获取谱面信息失败：', {
-          connectionId,
-          chartId,
-          error: errorMessage,
-        });
+        this.logger.error(`获取谱面信息失败: ${connectionId} (谱面: ${chartId}, 错误: ${errorMessage})`);
 
         this.respond(connectionId, sendResponse, {
           type: ServerCommandType.SelectChart,
@@ -1342,11 +1254,7 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.debug('游戏开始请求：', {
-      connectionId,
-      userId: session.userId,
-      roomId: room.id,
-    });
+    this.logger.mark(`“${session.userInfo.name}” 在房间 “${room.id}” 请求开始对局`);
 
     if (room.players.size > 1) {
       for (const playerInfo of room.players.values()) {
@@ -1368,7 +1276,7 @@ export class ProtocolHandler {
     } else {
       if (!this.roomManager.isSoloConfirmPending(room.id)) {
         this.roomManager.setSoloConfirmPending(room.id, true);
-        this.logger.info('单人房首次开始，发送确认消息', { roomId: room.id });
+        this.logger.info(`房间 “${room.id}” 等待单人房确认开始`);
         this.broadcastMessage(room, {
           type: 'Chat',
           user: -1, // System User
@@ -1376,7 +1284,7 @@ export class ProtocolHandler {
         });
       } else {
         this.roomManager.setSoloConfirmPending(room.id, false); // Reset flag
-        this.logger.info('单人房确认开始，立即开始游戏', { roomId: room.id });
+        this.logger.info(`房间 “${room.id}” 对局开始，玩家：${session.userId}`);
 
         for (const playerInfo of room.players.values()) {
           playerInfo.isReady = false;
@@ -1446,11 +1354,7 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.info('玩家已准备：', {
-      connectionId,
-      userId: session.userId,
-      roomId: room.id,
-    });
+    this.logger.info(`玩家 “${session.userInfo.name}” (ID: ${session.userId}) 在房间 “${room.id}” 已准备`);
 
     this.roomManager.setPlayerReady(room.id, session.userId, true);
 
@@ -1463,7 +1367,7 @@ export class ProtocolHandler {
       .filter((p) => p.user.id !== room.ownerId)
       .every((p) => p.isReady);
     if (allReady) {
-      this.logger.debug('所有玩家已准备，开始游戏：', { roomId: room.id });
+      this.logger.info(`房间 “${room.id}” 对局开始，玩家：${Array.from(room.players.keys()).join(', ')}`);
 
       for (const playerInfo of room.players.values()) {
         playerInfo.isFinished = false;
@@ -1533,11 +1437,7 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.debug('玩家取消了准备', {
-      connectionId,
-      userId: session.userId,
-      roomId: room.id,
-    });
+    this.logger.debug(`玩家 “${session.userInfo.name}” (ID: ${session.userId}) 在房间 “${room.id}” 取消了准备`);
 
     this.roomManager.setPlayerReady(room.id, session.userId, false);
     player.isFinished = false;
@@ -1585,10 +1485,7 @@ export class ProtocolHandler {
   ): Promise<void> {
     const session = this.sessions.get(connectionId);
     if (!session) {
-      this.logger.warn('[游戏结果] 未验证的Played消息', {
-        connectionId,
-        recordId,
-      });
+      this.logger.warn(`[游戏结果] 收到来自未验证连接 ${connectionId} 的 Played 消息 (记录ID: ${recordId})`);
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Played,
         result: { ok: false, error: '未验证' },
@@ -1598,11 +1495,7 @@ export class ProtocolHandler {
 
     const room = this.roomManager.getRoomByUserId(session.userId);
     if (!room) {
-      this.logger.error('[游戏结果] 房间不存在', {
-        connectionId,
-        userId: session.userId,
-        recordId,
-      });
+      this.logger.error(`[游戏结果] 玩家 ${session.userId} 提交成绩时房间不存在 (记录ID: ${recordId})`);
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Played,
         result: { ok: false, error: '房间不存在喵' },
@@ -1611,13 +1504,7 @@ export class ProtocolHandler {
     }
 
     if (room.state.type !== 'Playing') {
-      this.logger.warn('[游戏结果] 游戏未进行中', {
-        connectionId,
-        userId: session.userId,
-        roomId: room.id,
-        recordId,
-        currentState: room.state.type,
-      });
+      this.logger.warn(`[游戏结果] 玩家 ${session.userId} 在房间 “${room.id}” 提交成绩，但游戏未在进行中 (当前状态: ${room.state.type})`);
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Played,
         result: { ok: false, error: '游戏未进行中' },
@@ -1627,11 +1514,7 @@ export class ProtocolHandler {
 
     const player = room.players.get(session.userId);
     if (!player) {
-      this.logger.error('[游戏结果] 房间中找不到玩家', {
-        connectionId,
-        userId: session.userId,
-        roomId: room.id,
-      });
+      this.logger.error(`[游戏结果] 房间 “${room.id}” 中找不到玩家 ${session.userId} (记录ID: ${recordId})`);
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Played,
         result: { ok: false, error: '房间中找不到玩家' },
@@ -1640,11 +1523,7 @@ export class ProtocolHandler {
     }
 
     if (player.isFinished) {
-      this.logger.warn('[游戏结果] 玩家已经提交过成绩', {
-        connectionId,
-        userId: session.userId,
-        roomId: room.id,
-      });
+      this.logger.warn(`[游戏结果] 玩家 ${session.userId} 在房间 “${room.id}” 重复提交成绩`);
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Played,
         result: { ok: true, value: undefined },
@@ -1660,17 +1539,11 @@ export class ProtocolHandler {
         throw new Error(`API返回了一个神秘的状态： ${response.status}`);
       }
 
-      recordInfo = await response.json();
+      recordInfo = await response.json() as any;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to fetch record';
       
-      this.logger.error('[游戏结果] 获取记录失败', {
-        connectionId,
-        userId: session.userId,
-        roomId: room.id,
-        recordId,
-        error: errorMessage,
-      });
+      this.logger.error(`[游戏结果] 获取记录失败: ${connectionId} (用户: ${session.userId}, 房间: ${room.id}, 记录: ${recordId}, 错误: ${errorMessage})`);
       
       this.respond(connectionId, sendResponse, {
         type: ServerCommandType.Played,
@@ -1693,18 +1566,8 @@ export class ProtocolHandler {
     };
 
     const activePlayers = Array.from(room.players.values()).filter((p) => !p.user.monitor);
-    const finishedPlayers = activePlayers.filter((p) => p.isFinished);
 
-    this.logger.info('[游戏结果] 已收到', {
-      connectionId,
-      userId: session.userId,
-      roomId: room.id,
-      recordId,
-      score: player.score.score,
-      accuracy: player.score.accuracy,
-      finishedCount: finishedPlayers.length,
-      totalPlayers: activePlayers.length,
-    });
+    this.logger.mark(`“${session.userInfo.name}” 在房间 “${room.id}” 完成游玩并上传记录（分数：${recordInfo.score}，Acc：${recordInfo.accuracy}）`);
 
     // 广播 Played 消息给其他玩家
     this.broadcastMessage(room, {
@@ -1746,11 +1609,7 @@ export class ProtocolHandler {
       return;
     }
 
-    this.logger.info('[游戏结果] 玩家主动放弃', {
-      userId: session.userId,
-      roomId: room.id,
-      roomStatus: room.state.type,
-    });
+    this.logger.info(`[游戏结果] 玩家 “${session.userInfo.name}” (ID: ${session.userId}) 在房间 “${room.id}” 主动放弃`);
 
     this.broadcastMessage(room, {
       type: 'Abort',
@@ -1773,10 +1632,7 @@ export class ProtocolHandler {
           finishTime: Date.now(),
         };
 
-        this.logger.info('[游戏结果] 已标记为放弃', {
-          userId: session.userId,
-          roomId: room.id,
-        });
+        this.logger.info(`[游戏结果] 玩家 “${session.userInfo.name}” (ID: ${session.userId}) 在房间 “${room.id}” 已标记为放弃`);
 
         // 检查游戏是否结束
         this.checkGameEnd(room);
@@ -1798,55 +1654,34 @@ export class ProtocolHandler {
     const finishedPlayers = activePlayers.filter((playerInfo) => playerInfo.isFinished);
     const allFinished = finishedPlayers.length === activePlayers.length;
 
-    this.logger.info('[检查结束] 正在评估', {
-      roomId: room.id,
-      onlinePlayers: activePlayers.length,
-      finishedPlayers: finishedPlayers.length,
-      allFinished,
-    });
+    this.logger.info(`[检查结束] 房间 “${room.id}” 评估中 (进度: ${finishedPlayers.length}/${activePlayers.length})`);
 
     if (activePlayers.length === 0) {
-      this.logger.info('[检查结束] 没有活跃玩家，结束游戏', {
-        roomId: room.id,
-      });
+      this.logger.info(`[检查结束] 房间 “${room.id}” 没有活跃玩家，结束游戏`);
       this.endGame(room);
       return;
     }
 
     if (!allFinished) {
-      this.logger.debug('[检查结束] 等待更多玩家完成', {
-        roomId: room.id,
-        finished: finishedPlayers.length,
-        total: activePlayers.length,
-      });
       return;
     }
 
-    this.logger.info('[检查结束] 所有玩家已完成', {
-      roomId: room.id,
-      playerCount: activePlayers.length,
-    });
+    this.logger.info(`[检查结束] 房间 “${room.id}” 所有玩家已完成 (${activePlayers.length} 人)，结束游戏`);
 
     this.endGame(room);
   }
 
   private endGame(room: Room): void {
     if (room.state.type !== 'Playing') {
-      this.logger.debug('[结束游戏] 调用但房间不在游戏中状态', {
-        roomId: room.id,
-        currentState: room.state.type,
-      });
+      this.logger.debug(`[结束游戏] 被调用但房间 “${room.id}” 不在游戏中状态 (当前状态: ${room.state.type})`);
       return;
     }
 
-    this.logger.info('[结束游戏] 开始', {
-      roomId: room.id,
-      currentStatus: room.state.type,
-      playerCount: room.players.size,
-      cycle: room.cycle,
-    });
-
     const activePlayers = Array.from(room.players.values()).filter((playerInfo) => !playerInfo.user.monitor);
+    const uploadedCount = activePlayers.filter(p => p.isFinished).length;
+    const abortedCount = activePlayers.length - uploadedCount;
+
+    this.logger.info(`房间 “${room.id}” 对局结束（已上传：${uploadedCount}，中止：${abortedCount}）`);
 
     const rankings: PlayerRanking[] = activePlayers
       .map((playerInfo) => ({
@@ -1874,11 +1709,7 @@ export class ProtocolHandler {
     const oldState = room.state.type;
 
     if (room.cycle) {
-      this.logger.info('[结束游戏] 循环模式已开启，轮换房主并保留谱面', {
-        roomId: room.id,
-        chartId: room.selectedChart?.id ?? null,
-        currentOwnerId: room.ownerId,
-      });
+      this.logger.info(`[结束游戏] 房间 “${room.id}” 开启了循环模式，正在轮换房主`);
       
       // 轮换房主到下一个玩家
       const playerIds = Array.from(room.players.keys()).filter((id) => {
@@ -1894,11 +1725,7 @@ export class ProtocolHandler {
         const oldOwnerId = room.ownerId;
         this.roomManager.changeRoomOwner(room.id, newOwnerId);
         
-        this.logger.info('[房主轮换]', {
-          roomId: room.id,
-          oldOwnerId,
-          newOwnerId,
-        });
+        this.logger.info(`[房主轮换] 房间 “${room.id}”: ${oldOwnerId} -> ${newOwnerId}`);
         
         // 广播房主变更消息
         this.broadcastToRoom(room, {
@@ -1924,11 +1751,7 @@ export class ProtocolHandler {
         type: 'WaitingForReady',
       });
       
-      this.logger.info('[状态变更]', {
-        roomId: room.id,
-        from: oldState,
-        to: 'WaitingForReady',
-      });
+      this.logger.info(`[状态变更] 房间 “${room.id}”: ${oldState} -> WaitingForReady`);
       
       for (const playerInfo of room.players.values()) {
         playerInfo.isReady = false;
@@ -1937,9 +1760,7 @@ export class ProtocolHandler {
       }
       
     } else {
-      this.logger.info('[结束游戏] 普通模式，清除谱面', {
-        roomId: room.id,
-      });
+      this.logger.info(`[结束游戏] 房间 “${room.id}” (普通模式)，保留谱面选择`);
       
       // Save current chart as last game chart before clearing
       room.lastGameChart = room.selectedChart;
@@ -1950,11 +1771,7 @@ export class ProtocolHandler {
       });
       this.roomManager.setSoloConfirmPending(room.id, false);
       
-      this.logger.info('[状态变更]', {
-        roomId: room.id,
-        from: oldState,
-        to: 'SelectChart',
-      });
+      this.logger.info(`[状态变更] 房间 “${room.id}”: ${oldState} -> SelectChart`);
       
       // this.roomManager.setRoomChart(room.id, undefined); // Preserve chart info
       
@@ -1965,27 +1782,11 @@ export class ProtocolHandler {
       }
     }
 
-    this.logger.info('[结束游戏] 完成', {
-      roomId: room.id,
-      newStatus: room.state.type,
-      hasChart: room.selectedChart !== undefined,
-      cycle: room.cycle,
-      rankings: rankings.map((entry) => ({
-        rank: entry.rank,
-        userId: entry.userId,
-        score: entry.score?.score ?? null,
-      })),
-    });
-
     this.broadcastRoomUpdate(room);
   }
 
   public broadcastRoomUpdate(room: Room): void {
-    this.logger.info('[广播] 房间更新', {
-      roomId: room.id,
-      status: room.state.type,
-      recipientCount: room.players.size,
-    });
+    this.logger.info(`[广播] 房间 “${room.id}” 状态更新 (${room.state.type})，广播人数：${room.players.size}`);
 
     this.broadcastToRoom(room, {
       type: ServerCommandType.ChangeState,

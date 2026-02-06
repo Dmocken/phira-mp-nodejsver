@@ -6,7 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogLevel = 'debug' | 'info' | 'mark' | 'warn' | 'error';
 
 export interface LogMetadata {
   [key: string]: unknown;
@@ -14,6 +14,7 @@ export interface LogMetadata {
 
 export interface Logger {
   info(message: string, metadata?: LogMetadata): void;
+  mark(message: string, metadata?: LogMetadata): void;
   warn(message: string, metadata?: LogMetadata): void;
   error(message: string, metadata?: LogMetadata): void;
   debug(message: string, metadata?: LogMetadata): void;
@@ -22,6 +23,7 @@ export interface Logger {
 const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
   debug: 10,
   info: 20,
+  mark: 25,
   warn: 30,
   error: 40,
 };
@@ -30,13 +32,14 @@ const COLOR_CODES: Record<string, string> = {
   RESET: '\x1b[0m',
   DEBUG: '\x1b[90m', // 灰色
   INFO: '\x1b[32m',  // 绿色
+  MARK: '\x1b[36m',  // 青色
   WARN: '\x1b[33m',  // 黄色
   ERROR: '\x1b[31m', // 红色
 };
 
 const normaliseLevel = (level: string | undefined): LogLevel => {
   const candidate = level?.toLowerCase();
-  if (candidate === 'debug' || candidate === 'info' || candidate === 'warn' || candidate === 'error') {
+  if (candidate === 'debug' || candidate === 'info' || candidate === 'mark' || candidate === 'warn' || candidate === 'error') {
     return candidate;
   }
 
@@ -61,6 +64,15 @@ export class ConsoleLogger implements Logger {
       return;
     }
     const formatted = this.formatMessage('INFO', message, metadata);
+    console.info(formatted.console);
+    this.writeToFile(formatted.file);
+  }
+
+  mark(message: string, metadata: LogMetadata = {}): void {
+    if (!this.shouldLog('mark')) {
+      return;
+    }
+    const formatted = this.formatMessage('MARK', message, metadata);
     console.info(formatted.console);
     this.writeToFile(formatted.file);
   }
@@ -111,10 +123,13 @@ export class ConsoleLogger implements Logger {
   }
 
   private formatMessage(level: string, message: any, metadata: LogMetadata): { console: string; file: string } {
-    const timestamp = new Date().toISOString();
+    const now = new Date();
+    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}.${String(now.getMilliseconds()).padStart(3, '0')}`;
+    
     let color = COLOR_CODES.RESET;
     if (level === 'DEBUG') color = COLOR_CODES.DEBUG;
     else if (level === 'INFO') color = COLOR_CODES.INFO;
+    else if (level === 'MARK') color = COLOR_CODES.MARK;
     else if (level === 'WARN') color = COLOR_CODES.WARN;
     else if (level === 'ERROR') color = COLOR_CODES.ERROR;
 
@@ -135,8 +150,8 @@ export class ConsoleLogger implements Logger {
     const metaStr = metadata && Object.keys(metadata).length > 0 ? ' ' + JSON.stringify(metadata) : '';
     
     return {
-      console: `[${timestamp}]${color}[${this.context}][${level}] ${msgStr}${metaStr}${COLOR_CODES.RESET}`,
-      file: `[${timestamp}] [${this.context}] [${level}] ${msgStr}${metaStr}`
+      console: `[${timestamp}] ${color}[${level}] ${msgStr}${metaStr}${COLOR_CODES.RESET}`,
+      file: `[${timestamp}] [${level}] ${msgStr}${metaStr}`
     };
   }
 }

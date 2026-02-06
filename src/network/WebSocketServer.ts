@@ -1,11 +1,11 @@
-
 import { Server as HttpServer, IncomingMessage } from 'http';
 import { WebSocketServer as WsServer, WebSocket } from 'ws';
 import express from 'express';
 import { Logger } from '../logging/logger';
-import { RoomManager, Room, PlayerInfo } from '../domain/rooms/RoomManager';
+import { RoomManager, Room } from '../domain/rooms/RoomManager';
 import { ProtocolHandler } from '../domain/protocol/ProtocolHandler';
 import { ServerConfig } from '../config/config';
+import { UserInfo } from '../domain/protocol/Commands';
 
 // Define the structure of messages between client and server
 interface WebSocketMessage {
@@ -34,7 +34,7 @@ export class WebSocketServer {
 
   private setupConnectionHandler(): void {
     this.wss.on('connection', (ws: ExtWebSocket, req: IncomingMessage) => {
-      this.logger.info('New WebSocket client connected');
+      this.logger.info('WebSocket 客户端已连接');
 
       // Link express session to WebSocket
       try {
@@ -48,7 +48,7 @@ export class WebSocketServer {
         
         (this.sessionParser as any)(req, res, (err?: any) => {
           if (err) {
-            this.logger.error('Session parser middleware error', { error: err });
+            this.logger.error(`Session 解析中间件错误: ${err}`);
           }
           
           const session = (req as any).session;
@@ -56,7 +56,7 @@ export class WebSocketServer {
           ws.isAdmin = isAdmin;
 
           if (isAdmin) {
-            this.logger.info('Admin WebSocket client connected');
+            this.logger.info('管理员 WebSocket 客户端已连接');
           }
 
           // Send the current room list immediately on connection
@@ -70,7 +70,7 @@ export class WebSocketServer {
             // Send server stats
             this.sendStats(ws);
           } catch (error) {
-            this.logger.error('Failed to send initial room list to WebSocket client', { error });
+            this.logger.error(`向 WebSocket 客户端发送初始房间列表失败: ${error}`);
           }
           
           ws.on('message', (message: string) => {
@@ -78,12 +78,12 @@ export class WebSocketServer {
               const parsedMessage: WebSocketMessage = JSON.parse(message);
               this.handleClientMessage(ws, parsedMessage, isAdmin);
             } catch (error) {
-              this.logger.error('Failed to parse WebSocket message from client', { error, message });
+              this.logger.error(`解析来自客户端的 WebSocket 消息失败: ${error}`);
             }
           });
         });
       } catch (sessionError) {
-        this.logger.error('Session parsing failed in WebSocket connection', { error: sessionError });
+        this.logger.error(`WebSocket 连接中的 Session 解析失败: ${sessionError}`);
         // Fallback to non-admin if session parsing fails
         ws.isAdmin = false;
         // Still try to send the list
@@ -96,23 +96,23 @@ export class WebSocketServer {
       }
 
       ws.on('close', () => {
-        this.logger.info('WebSocket client disconnected');
+        this.logger.info('WebSocket 客户端已断开');
       });
 
       ws.on('error', (error) => {
-        this.logger.error('WebSocket error', { error });
+        this.logger.error(`WebSocket 错误: ${error}`);
       });
     });
   }
   
   private handleClientMessage(ws: ExtWebSocket, message: WebSocketMessage, isAdmin: boolean): void {
-    this.logger.debug('Received WebSocket message', { type: message.type });
+    this.logger.debug(`收到 WebSocket 消息类型: ${message.type}`);
     switch (message.type) {
       case 'getRoomDetails':
         this.sendRoomDetails(ws, message.payload.roomId, isAdmin);
         break;
       default:
-        this.logger.warn('Received unknown WebSocket message type', { type: message.type });
+        this.logger.warn(`收到未知的 WebSocket 消息类型: ${message.type}`);
     }
   }
 
@@ -151,7 +151,7 @@ export class WebSocketServer {
         payload: null, // Or an error object
       };
       ws.send(JSON.stringify(message));
-      this.logger.warn(`Client requested details for non-existent room: ${roomId}`);
+      this.logger.warn(`客户端请求不存在的房间详情: ${roomId}`);
     }
   }
 
@@ -273,7 +273,7 @@ export class WebSocketServer {
   }
 
   public broadcastRooms(): void {
-    this.logger.debug('Broadcasting room list to all WebSocket clients');
+    this.logger.debug('正在向所有 WebSocket 客户端广播房间列表');
     
     const adminList = JSON.stringify({
       type: 'roomList',
@@ -289,7 +289,7 @@ export class WebSocketServer {
         const message = client.isAdmin ? adminList : publicList;
         client.send(message, (error) => {
           if (error) {
-            this.logger.error('Failed to broadcast room list to a client', { error });
+            this.logger.error(`向客户端广播房间列表失败: ${error}`);
           }
         });
       }
@@ -310,7 +310,7 @@ export class WebSocketServer {
       if (client.readyState === WebSocket.OPEN) {
         client.send(serializedMessage, (error) => {
           if (error) {
-            this.logger.error('Failed to broadcast server stats to a client', { error });
+            this.logger.error(`向客户端广播服务器统计信息失败: ${error}`);
           }
         });
       }

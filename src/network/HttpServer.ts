@@ -1,4 +1,3 @@
-
 import express from 'express';
 import { createServer, Server } from 'http';
 import path from 'path';
@@ -77,9 +76,9 @@ export class HttpServer {
                 const match = line.match(/IP: ([\d.]+)/);
                 if (match) this.blacklistedIps.add(match[1]);
             });
-            this.logger.info(`Loaded ${this.blacklistedIps.size} blacklisted IPs from file.`);
+            this.logger.info(`已从文件加载 ${this.blacklistedIps.size} 个黑名单 IP。`);
         } catch (e) {
-            this.logger.error('Failed to load blacklist file', { error: e });
+            this.logger.error(`加载黑名单文件失败: ${e}`);
         }
     }
   }
@@ -91,7 +90,7 @@ export class HttpServer {
         fs.appendFileSync(this.blacklistFile, logEntry);
         this.blacklistedIps.add(ip);
     } catch (e) {
-        this.logger.error('Failed to write to blacklist log', { error: e });
+        this.logger.error(`写入黑名单日志失败: ${e}`);
     }
   }
 
@@ -105,9 +104,9 @@ export class HttpServer {
           regionId: 'cn-shanghai',
         });
         this.aliyunCaptchaClient = new $Captcha20230305.default(config);
-        this.logger.info('Aliyun Captcha 2.0 client initialized');
+        this.logger.info('阿里云验证码 2.0 客户端已初始化');
       } catch (error) {
-        this.logger.error('Failed to initialize Aliyun Captcha client', { error: String(error) });
+        this.logger.error(`初始化阿里云验证码客户端失败: ${String(error)}`);
       }
     }
   }
@@ -136,14 +135,14 @@ export class HttpServer {
                   body: formData,
               });
               
-              const outcome = await result.json();
+              const outcome = await result.json() as any;
               if (!outcome.success) {
-                  this.logger.warn(`Turnstile verification failed for IP ${ip}`, outcome);
+                  this.logger.warn(`IP ${ip} 的 Turnstile 验证失败: ${JSON.stringify(outcome)}`);
                   return { success: false, message: 'Turnstile verification failed. Please try again.' };
               }
               return { success: true };
           } catch (error) {
-              this.logger.error('Turnstile verification error:', { error: String(error) });
+              this.logger.error(`Turnstile 验证错误: ${String(error)}`);
               return { success: false, message: 'Internal server error during verification.' };
           }
       }
@@ -151,7 +150,7 @@ export class HttpServer {
       if (provider === 'aliyun') {
           const captchaVerifyParam = req.body['captchaVerifyParam'] || req.body['captcha_verify_param'];
           if (!this.aliyunCaptchaClient || !this.config.aliyunCaptchaSceneId) {
-              this.logger.error('Aliyun Captcha client not initialized or Scene ID missing');
+              this.logger.error('阿里云验证码客户端未初始化或 Scene ID 缺失');
               return { success: false, message: 'Captcha service configuration error.' };
           }
           if (!captchaVerifyParam) return { success: false, message: 'Aliyun Captcha verification failed (missing param).' };
@@ -164,14 +163,14 @@ export class HttpServer {
               
               const response = await this.aliyunCaptchaClient.verifyIntelligentCaptcha(verifyIntelligentCaptchaRequest);
               
-              this.logger.info(`Aliyun 2.0 API Response for IP ${ip}:`, { body: response.body });
+              this.logger.info(`IP ${ip} 的阿里云 2.0 API 响应: ${JSON.stringify(response.body)}`);
 
               const verifyResult = response.body?.result?.verifyResult;
               if (response.body && response.body.result && (verifyResult === true || (verifyResult as any) === 'true')) {
-                  this.logger.info(`Aliyun Captcha verified successfully for IP ${ip}`);
+                  this.logger.info(`IP ${ip} 的阿里云验证码验证成功`);
                   return { success: true };
               } else {
-                  this.logger.warn(`Aliyun Captcha verification failed for IP ${ip}`, response.body);
+                  this.logger.warn(`IP ${ip} 的阿里云验证码验证失败: ${JSON.stringify(response.body)}`);
                   let msg = response.body?.message || 'Verification failed';
                   if (response.body?.result?.verifyCode === 'F023') {
                       msg = 'SceneId mismatch (F023). Please check your Aliyun console.';
@@ -179,12 +178,7 @@ export class HttpServer {
                   return { success: false, message: msg };
               }
           } catch (error: any) {
-              this.logger.error('Aliyun Captcha SDK error:', { 
-                  message: error.message,
-                  code: error.code,
-                  data: error.data,
-                  stack: error.stack
-              });
+              this.logger.error(`阿里云验证码 SDK 错误: ${error.message} (Code: ${error.code})`);
               return { success: false, message: `Captcha service connection error: ${error.message}` };
           }
       }
@@ -200,7 +194,7 @@ export class HttpServer {
     // Session management
     // Check for insecure default secret
     if (this.config.sessionSecret === 'a-very-insecure-secret-change-it') {
-        this.logger.warn('SECURITY WARNING: Using default session secret. Please set SESSION_SECRET in .env file.');
+        this.logger.warn('安全警告：正在使用默认的 Session Secret。请在 .env 文件中设置 SESSION_SECRET。');
     }
 
     this.app.use(this.sessionParser);
@@ -216,7 +210,7 @@ export class HttpServer {
   private setupRoutes(): void {
     const publicPath = path.join(__dirname, '../../public');
     this.app.use(express.static(publicPath));
-    this.logger.info(`Serving static files from ${publicPath}`);
+    this.logger.info(`正在从 ${publicPath} 提供静态文件`);
 
     this.app.get('/admin', (req, res) => {
       if ((req.session as AdminSession).isAdmin) {
@@ -300,10 +294,10 @@ export class HttpServer {
             
             (req.session as AdminSession).isAdmin = true;
             const safeUsername = String(username).substring(0, 50); // Limit log length
-            this.logger.info(`Admin user '${safeUsername}' logged in successfully from ${ip}.`);
+            this.logger.info(`管理员用户 '${safeUsername}' 从 ${ip} 登录成功。`);
             return res.redirect('/');
         } catch (err) {
-            this.logger.error('Session regeneration failed', { error: String(err) });
+            this.logger.error(`Session 重生失败: ${String(err)}`);
             return res.status(500).send('Login error');
         }
       } else {
@@ -313,7 +307,7 @@ export class HttpServer {
         this.loginAttempts.set(ip, attempt);
         
         const safeUsername = String(username).substring(0, 50); // Limit log length
-        this.logger.warn(`Failed login attempt for user '${safeUsername}' from ${ip}. Failed attempts: ${attempt.count}`);
+        this.logger.warn(`用户 '${safeUsername}' 从 ${ip} 登录失败。失败尝试次数: ${attempt.count}`);
         return res.status(401).send('Invalid username or password. <a href="/admin">Try again</a>');
       }
     });
@@ -321,7 +315,7 @@ export class HttpServer {
     this.app.get('/logout', (req, res) => {
         return req.session.destroy((err) => {
             if (err) {
-                this.logger.error('Failed to destroy session:', err);
+                this.logger.error(`销毁 Session 失败: ${err}`);
                 return res.status(500).send('Could not log out.');
             }
             return res.redirect('/');
@@ -617,12 +611,12 @@ export class HttpServer {
   public async start(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.server.listen(this.config.webPort, () => {
-        this.logger.info(`HTTP server listening on port ${this.config.webPort}`);
+        this.logger.info(`HTTP 服务器已启动，端口：${this.config.webPort}`);
         resolve();
       });
 
       this.server.on('error', (error) => {
-        this.logger.error('HTTP server error:', { error });
+        this.logger.error(`HTTP 服务器错误: ${error}`);
         reject(error);
       });
     });
@@ -631,7 +625,7 @@ export class HttpServer {
   public stop(): Promise<void> {
     return new Promise((resolve) => {
       this.server.close(() => {
-        this.logger.info('HTTP server stopped');
+        this.logger.info('HTTP 服务器已停止');
         resolve();
       });
     });

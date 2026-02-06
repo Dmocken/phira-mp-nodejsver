@@ -3,7 +3,7 @@
  * Copyright (c) 2024
  */
 
-import { Server as NetServer, Socket, createServer } from 'net';
+import { Server as NetServer, Socket, createServer, AddressInfo } from 'net';
 import { Logger } from '../logging/logger';
 import { ProtocolHandler } from '../domain/protocol/ProtocolHandler';
 import { BinaryReader, BinaryWriter } from '../domain/protocol/BinaryProtocol';
@@ -51,18 +51,16 @@ export class TcpServer {
           const runtimeHost = typeof address === 'object' && address ? address.address : host;
           const runtimePort = typeof address === 'object' && address ? address.port : port;
 
-          this.logger.info('TCP 服务器已启动：', { host: runtimeHost, port: runtimePort });
+          this.logger.info(`TCP 服务器已启动：${runtimeHost}:${runtimePort}`);
           resolve();
         });
 
         this.server.on('error', (error) => {
-          this.logger.error('TCP 服务器错误：', { error: error.message });
+          this.logger.error(`TCP 服务器错误: ${error.message}`);
           reject(error);
         });
       } catch (error) {
-        this.logger.error('启动 TCP 服务器失败：', {
-          error: (error as Error).message,
-        });
+        this.logger.error(`启动 TCP 服务器失败: ${(error as Error).message}`);
         reject(error);
       }
     });
@@ -73,7 +71,7 @@ export class TcpServer {
       this.connections.forEach((state, connectionId) => {
         this.clearTimeoutMonitor(state);
         state.socket.destroy();
-        this.logger.debug('关机时关闭连接：', { connectionId });
+        this.logger.debug(`关机时关闭连接: ${connectionId}`);
       });
       this.connections.clear();
 
@@ -104,11 +102,7 @@ export class TcpServer {
 
     this.connections.set(connectionId, state);
 
-    this.logger.debug('建立TCP连接：', {
-      connectionId,
-      remoteAddress: socket.remoteAddress,
-      remotePort: socket.remotePort,
-    });
+    this.logger.debug(`建立 TCP 连接: ${connectionId} (${socket.remoteAddress}:${socket.remotePort})`);
 
     this.protocolHandler.handleConnection(connectionId, () => this.forceCloseConnection(connectionId));
     this.startTimeoutMonitor(connectionId, state);
@@ -126,14 +120,10 @@ export class TcpServer {
             state.versionReceived = true;
             state.version = version;
 
-            this.logger.debug('收到协议版本信息：', { connectionId, version });
+            this.logger.debug(`收到协议版本信息: ${connectionId} (版本: ${version})`);
 
             if (version !== PROTOCOL_VERSION) {
-              this.logger.warn('客户端协议版本不匹配：', {
-                connectionId,
-                expected: PROTOCOL_VERSION,
-                received: version,
-              });
+              this.logger.warn(`客户端协议版本不匹配: ${connectionId} (预期: ${PROTOCOL_VERSION}, 收到: ${version})`);
             }
           } else {
             return;
@@ -142,10 +132,7 @@ export class TcpServer {
 
         this.processPackets(connectionId, state);
       } catch (error) {
-        this.logger.error('处理数据失败：', {
-          connectionId,
-          error: (error as Error).message,
-        });
+        this.logger.error(`处理数据失败: ${connectionId} (${(error as Error).message})`);
       }
     });
 
@@ -153,14 +140,11 @@ export class TcpServer {
       this.clearTimeoutMonitor(state);
       this.connections.delete(connectionId);
       this.protocolHandler.handleDisconnection(connectionId);
-      this.logger.debug('TCP 连接被关闭：', { connectionId });
+      this.logger.debug(`TCP 连接被关闭: ${connectionId}`);
     });
 
     socket.on('error', (error) => {
-      this.logger.error('TCP 通信错误：', {
-        connectionId,
-        error: error.message,
-      });
+      this.logger.error(`TCP 通信错误: ${connectionId} (${error.message})`);
     });
   }
 
@@ -181,11 +165,7 @@ export class TcpServer {
 
       if (timeSinceLastReceived <= allowableInactivity) {
         if (state.missedHeartbeats !== 0) {
-          this.logger.debug('[心跳] 恢复正常', {
-            connectionId,
-            missedHeartbeats: state.missedHeartbeats,
-            timeSinceLastReceived: `${timeSinceLastReceived}ms`,
-          });
+          this.logger.debug(`[心跳] 恢复正常: ${connectionId} (连续次数: ${state.missedHeartbeats}, 延迟: ${timeSinceLastReceived}ms)`);
           state.missedHeartbeats = 0;
         }
         return;
@@ -193,20 +173,10 @@ export class TcpServer {
 
       state.missedHeartbeats += 1;
 
-      this.logger.warn('[心跳] 超时警告', {
-        connectionId,
-        missedHeartbeats: state.missedHeartbeats,
-        timeSinceLastReceived: `${timeSinceLastReceived}ms`,
-        allowableInactivity: `${allowableInactivity}ms`,
-        maxMissed: HEARTBEAT_MAX_MISSED,
-      });
+      this.logger.warn(`[心跳] 超时警告: ${connectionId} (连续次数: ${state.missedHeartbeats}, 延迟: ${timeSinceLastReceived}ms)`);
 
       if (state.missedHeartbeats >= HEARTBEAT_MAX_MISSED) {
-        this.logger.error('[心跳] 连续超时，断开连接', {
-          connectionId,
-          missedHeartbeats: state.missedHeartbeats,
-          timeSinceLastReceived: `${timeSinceLastReceived}ms`,
-        });
+        this.logger.error(`[心跳] 连续超时，正在断开连接: ${connectionId}`);
         this.clearTimeoutMonitor(state);
         state.socket.destroy(new Error('心跳包超时'));
       }
@@ -248,10 +218,7 @@ export class TcpServer {
           // Source: phira-mp-server/src/session.rs:164-166
           // Client sends Ping, server responds with Pong immediately
           if (parsed.command.type === ClientCommandType.Ping) {
-            this.logger.debug('[心跳] 收到客户端 Ping，立即响应 Pong', { 
-              connectionId,
-              timeSinceLastReceived: Date.now() - state.lastReceivedTime,
-            });
+            this.logger.debug(`[心跳] 收到客户端 Ping，立即响应 Pong: ${connectionId} (延迟: ${Date.now() - state.lastReceivedTime}ms)`);
             this.sendCommand(state.socket, { type: ServerCommandType.Pong });
             continue;
           }
@@ -271,16 +238,10 @@ export class TcpServer {
             continue;
           }
           
-          this.logger.debug('未处理的命令类型：', {
-            connectionId,
-            rawType: parsed.rawType,
-          });
+          this.logger.debug(`未处理的命令类型: ${connectionId} (原始类型: ${parsed.rawType})`);
         }
       } catch (error) {
-        this.logger.error('收到非法的包：', {
-          connectionId,
-          error: (error as Error).message,
-        });
+        this.logger.error(`收到非法的包: ${connectionId} (${(error as Error).message})`);
       }
     }
   }
@@ -320,9 +281,7 @@ export class TcpServer {
       socket.write(lengthBuffer);
       socket.write(payload);
     } catch (error) {
-      this.logger.error('发送命令失败：', {
-        error: (error as Error).message,
-      });
+      this.logger.error(`发送命令失败: ${(error as Error).message}`);
     }
   }
 
@@ -351,7 +310,7 @@ export class TcpServer {
   private forceCloseConnection(connectionId: string): void {
     const state = this.connections.get(connectionId);
     if (state && !state.socket.destroyed) {
-      this.logger.info('强制关闭连接：', { connectionId });
+      this.logger.info(`强制关闭连接: ${connectionId}`);
       this.clearTimeoutMonitor(state);
       state.socket.destroy();
     }

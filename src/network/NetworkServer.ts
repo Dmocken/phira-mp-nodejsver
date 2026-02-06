@@ -43,11 +43,10 @@ export class NetworkServer {
       this.runtimeHost = typeof host === 'string' ? host : undefined;
       this.runtimePort = typeof port === 'number' ? port : undefined;
 
+      this.logger.mark(`服务器名称 ${this.config.serverName}`);
       this.logger.info('服务器启动成功');
     } catch (error) {
-      this.logger.error('启动服务器失败：', {
-        error: (error as Error).message,
-      });
+      this.logger.error(`启动服务器失败: ${(error as Error).message}`);
       throw error;
     }
   }
