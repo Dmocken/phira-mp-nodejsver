@@ -41,6 +41,7 @@ export interface ServerConfig {
   roomSize: number;
   adminName: string;
   adminPassword: string;
+  adminSecret: string;
   adminPhiraId: number[];
   ownerPhiraId: number[];
   sessionSecret: string;
@@ -73,6 +74,7 @@ const defaultConfig: ServerConfig = {
   roomSize: 8,
   adminName: 'admin',
   adminPassword: 'password',
+  adminSecret: '',
   adminPhiraId: [],
   ownerPhiraId: [],
   sessionSecret: 'a-very-insecure-secret-change-it',
@@ -120,6 +122,7 @@ export const env = {
   // Admin
   adminName: process.env.ADMIN_NAME || 'admin',
   adminPassword: process.env.ADMIN_PASSWORD || 'password',
+  adminSecret: process.env.ADMIN_SECRET || '',
   adminPhiraId: parseNumberList(process.env.ADMIN_PHIRA_ID, []),
   ownerPhiraId: parseNumberList(process.env.OWNER_PHIRA_ID, []),
   sessionSecret: process.env.SESSION_SECRET || 'a-very-insecure-secret-change-it',
@@ -176,6 +179,7 @@ export const createServerConfig = (overrides: Partial<ServerConfig> = {}): Serve
     roomSize: Number.parseInt(process.env.ROOM_SIZE ?? `${defaultConfig.roomSize}`, 10),
     adminName: process.env.ADMIN_NAME ?? defaultConfig.adminName,
     adminPassword: process.env.ADMIN_PASSWORD ?? defaultConfig.adminPassword,
+    adminSecret: process.env.ADMIN_SECRET ?? defaultConfig.adminSecret,
     adminPhiraId: parseNumberList(process.env.ADMIN_PHIRA_ID, defaultConfig.adminPhiraId),
     ownerPhiraId: parseNumberList(process.env.OWNER_PHIRA_ID, defaultConfig.ownerPhiraId),
     sessionSecret: process.env.SESSION_SECRET ?? defaultConfig.sessionSecret,

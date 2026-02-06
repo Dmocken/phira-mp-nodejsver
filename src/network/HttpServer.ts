@@ -202,9 +202,57 @@ export class HttpServer {
     // CORS middleware to allow other servers to fetch data
     this.app.use((_req, res, next) => {
         res.header('Access-Control-Allow-Origin', '*'); // Allow any server to request
-        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, X-Admin-Secret');
         next();
     });
+  }
+
+  private adminAuth(req: express.Request, res: express.Response, next: express.NextFunction): void {
+    const isAdmin = (req.session as AdminSession).isAdmin;
+    const providedSecret = req.header('X-Admin-Secret') || (req.query.admin_secret as string);
+
+    const isSecretValid = providedSecret ? this.verifyAdminSecret(providedSecret) : false;
+
+    if (isAdmin || isSecretValid) {
+        // If authenticated via secret but not session, we can optionally mark session as admin
+        if (!isAdmin && (req.session as AdminSession)) {
+            (req.session as AdminSession).isAdmin = true;
+        }
+        return next();
+    }
+
+    res.status(403).json({ error: 'Forbidden: Admin access required' });
+  }
+
+  private verifyAdminSecret(providedSecret: string): boolean {
+    if (!this.config.adminSecret || this.config.adminSecret.trim() === '') return false;
+
+    try {
+      // 使用 ADMIN_SECRET 的 SHA256 作为 32 字节 Key
+      const key = crypto.createHash('sha256').update(this.config.adminSecret).digest();
+      const data = Buffer.from(providedSecret, 'hex');
+      
+      if (data.length < 17) return false;
+
+      const iv = data.subarray(0, 16);
+      const encrypted = data.subarray(16);
+      
+      const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+      let decrypted = decipher.update(encrypted, undefined, 'utf8');
+      decrypted += decipher.final('utf8');
+
+      // 获取当前日期 (YYYY-MM-DD)
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      
+      // 验证格式: {日期}_{SECRET}_xy521
+      const expected = `${dateStr}_${this.config.adminSecret}_xy521`;
+      
+      return decrypted === expected;
+    } catch (e) {
+      this.logger.debug(`管理员密钥解密失败: ${e}`);
+      return false;
+    }
   }
 
   private setupRoutes(): void {
@@ -217,15 +265,6 @@ export class HttpServer {
         return res.redirect('/');
       }
       res.sendFile(path.join(publicPath, 'admin.html'));
-    });
-
-    this.app.get('/api/config/public', (_req, res) => {
-        res.json({
-            turnstileSiteKey: this.config.turnstileSiteKey,
-            captchaProvider: this.config.captchaProvider,
-            aliyunCaptchaSceneId: this.config.aliyunCaptchaSceneId,
-            aliyunCaptchaPrefix: this.config.aliyunCaptchaPrefix,
-        });
     });
 
     this.app.post('/api/test/verify-captcha', async (req, res) => {
@@ -327,10 +366,7 @@ export class HttpServer {
         return res.json({ isAdmin });
     });
 
-    this.app.get('/api/all-players', (req, res) => {
-        if (!(req.session as AdminSession).isAdmin) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    this.app.get('/api/all-players', this.adminAuth.bind(this), (_req, res) => {
         const allPlayers = this.protocolHandler.getAllSessions().map(p => ({
             ...p,
             isAdmin: this.config.adminPhiraId.includes(p.id),
@@ -339,10 +375,7 @@ export class HttpServer {
         return res.json(allPlayers);
     });
 
-    this.app.post('/api/admin/server-message', (req, res) => {
-        if (!(req.session as AdminSession).isAdmin) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    this.app.post('/api/admin/server-message', this.adminAuth.bind(this), (req, res) => {
         const { roomId, content } = req.body;
         if (!roomId || !content) {
             return res.status(400).json({ error: 'Missing roomId or content' });
@@ -351,10 +384,7 @@ export class HttpServer {
         return res.json({ success: true });
     });
 
-    this.app.post('/api/admin/broadcast', (req, res) => {
-        if (!(req.session as AdminSession).isAdmin) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    this.app.post('/api/admin/broadcast', this.adminAuth.bind(this), (req, res) => {
         const { content, target } = req.body;
         if (!content) {
             return res.status(400).json({ error: 'Missing content' });
@@ -376,10 +406,7 @@ export class HttpServer {
         return res.json({ success: true, roomCount: sentCount });
     });
 
-    this.app.post('/api/admin/bulk-action', (req, res) => {
-        if (!(req.session as AdminSession).isAdmin) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    this.app.post('/api/admin/bulk-action', this.adminAuth.bind(this), (req, res) => {
         const { action, value, target } = req.body;
         const rooms = this.roomManager.listRooms();
         
@@ -427,10 +454,7 @@ export class HttpServer {
         return res.json({ success: true, affectedCount: count });
     });
 
-    this.app.post('/api/admin/kick-player', (req, res) => {
-        if (!(req.session as AdminSession).isAdmin) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    this.app.post('/api/admin/kick-player', this.adminAuth.bind(this), (req, res) => {
         const { userId } = req.body;
         if (!userId) {
             return res.status(400).json({ error: 'Missing userId' });
@@ -439,10 +463,7 @@ export class HttpServer {
         return res.json({ success });
     });
 
-    this.app.post('/api/admin/force-start', (req, res) => {
-        if (!(req.session as AdminSession).isAdmin) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    this.app.post('/api/admin/force-start', this.adminAuth.bind(this), (req, res) => {
         const { roomId } = req.body;
         if (!roomId) {
             return res.status(400).json({ error: 'Missing roomId' });
@@ -451,10 +472,7 @@ export class HttpServer {
         return res.json({ success });
     });
 
-    this.app.post('/api/admin/toggle-lock', (req, res) => {
-        if (!(req.session as AdminSession).isAdmin) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    this.app.post('/api/admin/toggle-lock', this.adminAuth.bind(this), (req, res) => {
         const { roomId } = req.body;
         if (!roomId) {
             return res.status(400).json({ error: 'Missing roomId' });
@@ -463,10 +481,7 @@ export class HttpServer {
         return res.json({ success });
     });
 
-    this.app.post('/api/admin/set-max-players', (req, res) => {
-        if (!(req.session as AdminSession).isAdmin) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    this.app.post('/api/admin/set-max-players', this.adminAuth.bind(this), (req, res) => {
         const { roomId, maxPlayers } = req.body;
         if (!roomId || maxPlayers === undefined) {
             return res.status(400).json({ error: 'Missing roomId or maxPlayers' });
@@ -475,10 +490,7 @@ export class HttpServer {
         return res.json({ success });
     });
 
-    this.app.post('/api/admin/close-room', (req, res) => {
-        if (!(req.session as AdminSession).isAdmin) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    this.app.post('/api/admin/close-room', this.adminAuth.bind(this), (req, res) => {
         const { roomId } = req.body;
         if (!roomId) {
             return res.status(400).json({ error: 'Missing roomId' });
@@ -487,10 +499,7 @@ export class HttpServer {
         return res.json({ success });
     });
 
-    this.app.post('/api/admin/toggle-mode', (req, res) => {
-        if (!(req.session as AdminSession).isAdmin) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    this.app.post('/api/admin/toggle-mode', this.adminAuth.bind(this), (req, res) => {
         const { roomId } = req.body;
         if (!roomId) {
             return res.status(400).json({ error: 'Missing roomId' });
@@ -499,10 +508,7 @@ export class HttpServer {
         return res.json({ success });
     });
 
-    this.app.get('/api/admin/room-blacklist', (req, res) => {
-        if (!(req.session as AdminSession).isAdmin) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    this.app.get('/api/admin/room-blacklist', this.adminAuth.bind(this), (req, res) => {
         const { roomId } = req.query;
         if (!roomId) {
             return res.status(400).json({ error: 'Missing roomId' });
@@ -511,10 +517,7 @@ export class HttpServer {
         return res.json({ blacklist: room?.blacklist || [] });
     });
 
-    this.app.post('/api/admin/set-room-blacklist', async (req, res) => {
-        if (!(req.session as AdminSession).isAdmin) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    this.app.post('/api/admin/set-room-blacklist', this.adminAuth.bind(this), async (req, res) => {
         const { roomId, userIds } = req.body;
         if (!roomId || !Array.isArray(userIds)) {
             return res.status(400).json({ error: 'Missing roomId or invalid userIds' });
@@ -523,10 +526,7 @@ export class HttpServer {
         return res.json({ success });
     });
 
-    this.app.get('/api/admin/room-whitelist', (req, res) => {
-        if (!(req.session as AdminSession).isAdmin) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    this.app.get('/api/admin/room-whitelist', this.adminAuth.bind(this), (req, res) => {
         const { roomId } = req.query;
         if (!roomId) {
             return res.status(400).json({ error: 'Missing roomId' });
@@ -535,10 +535,7 @@ export class HttpServer {
         return res.json({ whitelist: room?.whitelist || [] });
     });
 
-    this.app.post('/api/admin/set-room-whitelist', async (req, res) => {
-        if (!(req.session as AdminSession).isAdmin) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    this.app.post('/api/admin/set-room-whitelist', this.adminAuth.bind(this), async (req, res) => {
         const { roomId, userIds } = req.body;
         if (!roomId || !Array.isArray(userIds)) {
             return res.status(400).json({ error: 'Missing roomId or invalid userIds' });

@@ -130,6 +130,54 @@ Format code:
 npm run format
 ```
 
+## Web API
+
+The server provides a Web API for status monitoring and administration.
+
+### Authentication
+
+Administrative endpoints require authentication via one of two methods:
+
+1.  **Session (Browser)**: Log in via the `/admin` portal. Subsequent requests will be authenticated via cookies.
+2.  **Dynamic Admin Secret**: For external scripts/bots. Send an encrypted string using the `ADMIN_SECRET` configured in `.env`.
+    *   **Header**: `X-Admin-Secret: <ENCRYPTED_HEX>`
+    *   **Query**: `?admin_secret=<ENCRYPTED_HEX>`
+
+Use the `generate_secret.py` tool in the root directory to generate the required hex string for the current day.
+
+### Public Endpoints
+
+#### **Server Status**
+Returns server information, player count, and room list.
+- **URL**: `GET /api/status`
+- **Example**: `curl http://localhost:8080/api/status`
+
+### Administrative Endpoints
+
+Requires authentication.
+
+#### **All Players**
+List all currently connected players across all rooms.
+- **URL**: `GET /api/all-players`
+
+#### **Broadcast Message**
+Send a system message to all rooms or specific rooms.
+- **URL**: `POST /api/admin/broadcast`
+- **Body (JSON)**:
+  - `content`: Message text.
+  - `target` (optional): Room IDs starting with `#`, e.g., `#room1,room2`.
+
+#### **Kick Player**
+Forcefully remove a player from the server.
+- **URL**: `POST /api/admin/kick-player`
+- **Body (JSON)**: `{"userId": 12345}`
+
+#### **Room Management**
+- **Force Start**: `POST /api/admin/force-start` - `{"roomId": "123"}`
+- **Toggle Lock**: `POST /api/admin/toggle-lock` - `{"roomId": "123"}`
+- **Set Max Players**: `POST /api/admin/set-max-players` - `{"roomId": "123", "maxPlayers": 8}`
+- **Close Room**: `POST /api/admin/close-room` - `{"roomId": "123"}`
+
 ## TCP Protocol
 
 The server uses TCP sockets for communication. Clients can connect to the server using a TCP socket and send JSON-formatted messages.

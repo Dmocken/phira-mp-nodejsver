@@ -130,6 +130,54 @@ npm run lint:fix
 npm run format
 ```
 
+## Web API
+
+服务器提供 Web API 用于状态监控和管理操作。
+
+### 鉴权方式
+
+管理类接口要求通过以下任一方式进行鉴权：
+
+1.  **Session (浏览器)**：通过 `/admin` 页面登录。后续请求将通过 Cookie 自动鉴权。
+2.  **动态管理密钥 (Admin Secret)**：适用于外部脚本或机器人。需发送基于 `.env` 中 `ADMIN_SECRET` 加密后的字符串。
+    *   **Header**: `X-Admin-Secret: <加密十六进制串>`
+    *   **URL 参数**: `?admin_secret=<加密十六进制串>`
+
+请使用根目录下的 `generate_secret.py` 工具生成**当日有效**的加密串。
+
+### 公开接口
+
+#### **服务器状态**
+返回服务器信息、在线人数及房间列表。
+- **URL**: `GET /api/status`
+- **示例**: `curl http://localhost:8080/api/status`
+
+### 管理员接口
+
+需要鉴权。
+
+#### **所有玩家**
+列出全服所有房间内当前连接的玩家。
+- **URL**: `GET /api/all-players`
+
+#### **系统广播**
+向所有房间或指定房间发送系统消息。
+- **URL**: `POST /api/admin/broadcast`
+- **JSON 参数**:
+  - `content`: 消息内容。
+  - `target` (可选): 以 `#` 开头的房间 ID，例如 `#room1,room2`。
+
+#### **踢出玩家**
+强制将指定 ID 的玩家移出服务器。
+- **URL**: `POST /api/admin/kick-player`
+- **JSON 参数**: `{"userId": 12345}`
+
+#### **房间管理**
+- **强制开始**: `POST /api/admin/force-start` - `{"roomId": "123"}`
+- **切换锁定**: `POST /api/admin/toggle-lock` - `{"roomId": "123"}`
+- **设置人数上限**: `POST /api/admin/set-max-players` - `{"roomId": "123", "maxPlayers": 8}`
+- **关闭房间**: `POST /api/admin/close-room` - `{"roomId": "123"}`
+
 ## TCP 协议
 
 服务器使用 TCP 套接字进行通信。客户端可以使用 TCP 套接字连接到服务器并发送 JSON 格式的消息。
