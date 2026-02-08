@@ -45,13 +45,9 @@ export interface ServerConfig {
   adminPhiraId: number[];
   ownerPhiraId: number[];
   sessionSecret: string;
-  turnstileSiteKey?: string;
-  turnstileSecretKey?: string;
-  captchaProvider: 'cloudflare' | 'aliyun' | 'none';
-  aliyunAccessKeyId?: string;
-  aliyunAccessKeySecret?: string;
-  aliyunCaptchaSceneId?: string;
-  aliyunCaptchaPrefix?: string;
+  captchaProvider: 'geetest' | 'none';
+  geetestId?: string;
+  geetestKey?: string;
 }
 
 const defaultConfig: ServerConfig = {
@@ -105,11 +101,7 @@ export const env = {
   enableWebServer: parseBoolean(process.env.ENABLE_WEB_SERVER, true),
   
   // 验证码配置
-  captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase() as 'cloudflare' | 'aliyun' | 'none',
-  aliyunAccessKeyId: process.env.ALIYUN_ACCESS_KEY_ID,
-  aliyunAccessKeySecret: process.env.ALIYUN_ACCESS_KEY_SECRET,
-  aliyunCaptchaSceneId: process.env.ALIYUN_CAPTCHA_SCENE_ID,
-  aliyunCaptchaPrefix: process.env.ALIYUN_CAPTCHA_PREFIX,
+  captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase() as 'geetest' | 'none',
 
   // 房间过滤配置
   enablePubWeb: parseBoolean(process.env.ENABLE_PUB_WEB, false),
@@ -127,9 +119,6 @@ export const env = {
   ownerPhiraId: parseNumberList(process.env.OWNER_PHIRA_ID, []),
   sessionSecret: process.env.SESSION_SECRET || 'a-very-insecure-secret-change-it',
   
-  // Turnstile
-  turnstileSiteKey: process.env.TURNSTILE_SITE_KEY,
-  turnstileSecretKey: process.env.TURNSTILE_SECRET_KEY,
 
   // Phira API
   phiraApiUrl: process.env.PHIRA_API_URL || 'https://phira.5wyxi.com',
@@ -183,13 +172,9 @@ export const createServerConfig = (overrides: Partial<ServerConfig> = {}): Serve
     adminPhiraId: parseNumberList(process.env.ADMIN_PHIRA_ID, defaultConfig.adminPhiraId),
     ownerPhiraId: parseNumberList(process.env.OWNER_PHIRA_ID, defaultConfig.ownerPhiraId),
     sessionSecret: process.env.SESSION_SECRET ?? defaultConfig.sessionSecret,
-    turnstileSiteKey: process.env.TURNSTILE_SITE_KEY,
-    turnstileSecretKey: process.env.TURNSTILE_SECRET_KEY,
-    captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase() as 'cloudflare' | 'aliyun' | 'none',
-    aliyunAccessKeyId: process.env.ALIYUN_ACCESS_KEY_ID?.trim(),
-    aliyunAccessKeySecret: process.env.ALIYUN_ACCESS_KEY_SECRET?.trim(),
-    aliyunCaptchaSceneId: process.env.ALIYUN_CAPTCHA_SCENE_ID?.trim(),
-    aliyunCaptchaPrefix: process.env.ALIYUN_CAPTCHA_PREFIX?.trim(),
+    captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase() as  'geetest' | 'none',
+    geetestId: process.env.GEETEST_ID,
+    geetestKey: process.env.GEETEST_KEY,
   };
 
   return {

@@ -8,8 +8,6 @@ import { Logger } from '../logging/logger';
 import { ServerConfig } from '../config/config';
 import { RoomManager } from '../domain/rooms/RoomManager';
 import { ProtocolHandler } from '../domain/protocol/ProtocolHandler';
-import * as $Captcha20230305 from '@alicloud/captcha20230305';
-import * as $OpenApi from '@alicloud/openapi-client';
 
 interface AdminSession extends SessionData {
   isAdmin?: boolean;
@@ -25,7 +23,6 @@ export class HttpServer {
   private readonly server: Server;
   private readonly loginAttempts = new Map<string, LoginAttempt>();
   private readonly blacklistedIps = new Set<string>();
-  private aliyunCaptchaClient?: $Captcha20230305.default;
   private sessionParser: express.RequestHandler;
   private readonly blacklistFile = path.join(process.cwd(), 'logs', 'login_blacklist.log');
   
@@ -53,7 +50,6 @@ export class HttpServer {
 
     this.setupMiddleware();
     this.setupRoutes();
-    this.initAliyunCaptchaClient();
     this.loadBlacklist();
     
     // Cleanup expired login attempts every hour to prevent memory leak
@@ -94,23 +90,6 @@ export class HttpServer {
     }
   }
 
-  private initAliyunCaptchaClient(): void {
-    if (this.config.captchaProvider === 'aliyun' && this.config.aliyunAccessKeyId && this.config.aliyunAccessKeySecret) {
-      try {
-        const config = new $OpenApi.Config({
-          accessKeyId: this.config.aliyunAccessKeyId,
-          accessKeySecret: this.config.aliyunAccessKeySecret,
-          endpoint: 'captcha.cn-shanghai.aliyuncs.com',
-          regionId: 'cn-shanghai',
-        });
-        this.aliyunCaptchaClient = new $Captcha20230305.default(config);
-        this.logger.info('阿里云验证码 2.0 客户端已初始化');
-      } catch (error) {
-        this.logger.error(`初始化阿里云验证码客户端失败: ${String(error)}`);
-      }
-    }
-  }
-
   private async verifyCaptcha(req: express.Request, ip: string): Promise<{ success: boolean; message?: string }> {
       const provider = this.config.captchaProvider;
       
@@ -118,72 +97,50 @@ export class HttpServer {
           return { success: true };
       }
 
-      if (provider === 'cloudflare') {
-          const turnstileToken = req.body['cf-turnstile-response'];
-          if (!this.config.turnstileSecretKey) return { success: true };
-          if (!turnstileToken) return { success: false, message: 'Turnstile verification failed (missing token).' };
+      if (provider === 'geetest') {
+          const { lot_number, captcha_output, pass_token, gen_time } = req.body;
+          if (!lot_number || !captcha_output || !pass_token || !gen_time) {
+              return { success: false, message: 'Missing Geetest parameters.' };
+          }
+
+          if (!this.config.geetestId || !this.config.geetestKey) {
+              this.logger.error('Geetest ID or Key missing in configuration');
+              return { success: false, message: 'Captcha configuration error.' };
+          }
 
           try {
-              const verifyUrl = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
-              const formData = new URLSearchParams();
-              formData.append('secret', this.config.turnstileSecretKey);
-              formData.append('response', turnstileToken as string);
-              formData.append('remoteip', ip);
+              const sign_token = crypto.createHmac('sha256', this.config.geetestKey)
+                  .update(lot_number, 'utf8')
+                  .digest('hex');
 
-              const result = await fetch(verifyUrl, {
-                  method: 'POST',
-                  body: formData,
-              });
-              
-              const outcome = await result.json() as any;
-              if (!outcome.success) {
-                  this.logger.warn(`IP ${ip} 的 Turnstile 验证失败: ${JSON.stringify(outcome)}`);
-                  return { success: false, message: 'Turnstile verification failed. Please try again.' };
-              }
-              return { success: true };
-          } catch (error) {
-              this.logger.error(`Turnstile 验证错误: ${String(error)}`);
-              return { success: false, message: 'Internal server error during verification.' };
-          }
-      }
+              const query = new URLSearchParams({
+                  captcha_id: this.config.geetestId,
+                  lot_number,
+                  captcha_output,
+                  pass_token,
+                  gen_time,
+                  sign_token,
+              }).toString();
 
-      if (provider === 'aliyun') {
-          const captchaVerifyParam = req.body['captchaVerifyParam'] || req.body['captcha_verify_param'];
-          if (!this.aliyunCaptchaClient || !this.config.aliyunCaptchaSceneId) {
-              this.logger.error('阿里云验证码客户端未初始化或 Scene ID 缺失');
-              return { success: false, message: 'Captcha service configuration error.' };
-          }
-          if (!captchaVerifyParam) return { success: false, message: 'Aliyun Captcha verification failed (missing param).' };
+              const verifyUrl = `http://gcaptcha4.geetest.com/validate?${query}`;
+              const response = await fetch(verifyUrl, { method: 'POST' });
+              const result = await response.json() as any;
 
-          try {
-              const verifyIntelligentCaptchaRequest = new $Captcha20230305.VerifyIntelligentCaptchaRequest({
-                  captchaVerifyParam: captchaVerifyParam,
-                  sceneId: this.config.aliyunCaptchaSceneId,
-              });
-              
-              const response = await this.aliyunCaptchaClient.verifyIntelligentCaptcha(verifyIntelligentCaptchaRequest);
-              
-              this.logger.info(`IP ${ip} 的阿里云 2.0 API 响应: ${JSON.stringify(response.body)}`);
-
-              const verifyResult = response.body?.result?.verifyResult;
-              if (response.body && response.body.result && (verifyResult === true || (verifyResult as any) === 'true')) {
-                  this.logger.info(`IP ${ip} 的阿里云验证码验证成功`);
+              if (result.result === 'success') {
+                  this.logger.info(`IP ${ip} 的 Geetest 验证成功`);
                   return { success: true };
               } else {
-                  this.logger.warn(`IP ${ip} 的阿里云验证码验证失败: ${JSON.stringify(response.body)}`);
-                  let msg = response.body?.message || 'Verification failed';
-                  if (response.body?.result?.verifyCode === 'F023') {
-                      msg = 'SceneId mismatch (F023). Please check your Aliyun console.';
-                  }
-                  return { success: false, message: msg };
+                  this.logger.warn(`IP ${ip} 的 Geetest 验证失败: ${result.reason}`);
+                  return { success: false, message: result.reason || 'Geetest verification failed.' };
               }
-          } catch (error: any) {
-              this.logger.error(`阿里云验证码 SDK 错误: ${error.message} (Code: ${error.code})`);
-              return { success: false, message: `Captcha service connection error: ${error.message}` };
-          }
-      }
+          } catch (error) {
+              this.logger.error(`Geetest 验证错误: ${String(error)}`);
+              // 当请求 Geetest 服务接口出现异常，应放行通过 (参考 app.js)
+              return { success: true };
+           }
+       }
 
-      return { success: true };
+       return { success: true };
   }
 
   private setupMiddleware(): void {
@@ -271,6 +228,13 @@ export class HttpServer {
         const ip = req.ip || req.socket.remoteAddress || 'unknown';
         const result = await this.verifyCaptcha(req, ip);
         res.json(result);
+    });
+
+    this.app.get('/api/config/public', (_req, res) => {
+        res.json({
+            captchaProvider: this.config.captchaProvider,
+            geetestId: this.config.geetestId,
+        });
     });
 
     this.app.post('/login', async (req, res) => {
