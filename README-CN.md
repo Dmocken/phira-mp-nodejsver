@@ -26,7 +26,38 @@
 - ⚙️ **优化的房间逻辑**：改进了单人房间处理及全服广播系统。
 - 🛡️ **安全防护**：非法包即时切断、自动 IP 封禁、以及 Nginx 真实 IP 识别。
 
-## 环境变量配置 (.env)
+## 项目结构
+
+```
+.
+├── data/           # 持久化数据 (封禁列表、黑名单)
+├── public/         # Web 仪表盘资源 (HTML, JS, CSS, 多语言)
+└── src/
+    ├── config/     # 配置管理
+    ├── logging/    # 日志工具
+    ├── network/    # TCP、HTTP 和 WebSocket 服务器实现
+    ├── domain/
+    │   ├── auth/     # 玩家身份验证与封禁管理
+    │   ├── rooms/    # 房间管理逻辑
+    │   └── protocol/ # 二进制协议处理与指令定义
+    ├── app.ts      # 应用工厂 (组件装配)
+    └── index.ts    # 程序入口
+```
+
+## 快速开始
+
+### 前置条件
+
+- Node.js 18+ 
+- npm 或 pnpm
+
+### 安装
+
+```bash
+npm install
+```
+
+### 环境变量配置 (.env)
 
 | 变量名 | 描述 | 默认值 |
 | :--- | :--- | :--- |
@@ -47,7 +78,61 @@
 | `LOG_LEVEL` | 日志级别 (`debug`, `info`, `warn`, `error`) | `info` |
 | `CAPTCHA_PROVIDER` | 验证码提供商 (`geetest` 或 `none`) | `none` |
 
+### 开发模式
+
+启动带热重载的开发服务器：
+
+```bash
+npm run dev
+```
+
+### 构建
+
+编译 TypeScript 项目：
+
+```bash
+npm run build
+```
+
+### 生产环境
+
+启动构建后的应用：
+
+```bash
+npm start
+```
+
+### 测试
+
+运行测试：
+
+```bash
+npm test
+```
+
+### 代码检查与格式化
+
+检查代码质量：
+
+```bash
+npm run lint
+```
+
+格式化代码：
+
+```bash
+npm run format
+```
+
 ## Web API
+
+### 鉴权方式
+
+管理类接口要求通过以下任一方式进行鉴权：
+
+1.  **Session (浏览器)**：通过 `/admin` 页面登录。后续请求将通过 Cookie 自动鉴权。
+2.  **本地访问**: 来自 `127.0.0.1` 或 `::1` 的请求会被自动授权为管理员（前提是你的 HTTP 不走代理）。
+3.  **动态管理密钥 (Admin Secret)**：适用于外部脚本或机器人。需发送基于 `.env` 中 `ADMIN_SECRET` 加密后的字符串。
 
 ### 公开接口
 

@@ -26,7 +26,38 @@ TypeScript-based Node.js server with TCP support for multiplayer gaming.
 - ⚙️ **Optimized Room Logic**: Improved handling for solo rooms and server-side announcements.
 - 🛡️ **Security**: Anti-clogging for illegal packets, auto IP banning, and proxy support (Nginx).
 
-## Configuration (.env)
+## Project Structure
+
+```
+.
+├── data/           # Persistent data (Bans, Blacklists)
+├── public/         # Web dashboard assets (HTML, JS, CSS, Locales)
+└── src/
+    ├── config/     # Configuration management
+    ├── logging/    # Logging utilities
+    ├── network/    # TCP, HTTP, and WebSocket server implementations
+    ├── domain/
+    │   ├── auth/     # Player authentication & Ban management
+    │   ├── rooms/    # Room management logic
+    │   └── protocol/ # Binary protocol handling & commands
+    ├── app.ts      # Application factory (wiring components)
+    └── index.ts    # Main entry point
+```
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+ 
+- npm or pnpm
+
+### Installation
+
+```bash
+npm install
+```
+
+### Configuration (.env)
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
@@ -47,7 +78,63 @@ TypeScript-based Node.js server with TCP support for multiplayer gaming.
 | `LOG_LEVEL` | Logging level (`debug`, `info`, `warn`, `error`) | `info` |
 | `CAPTCHA_PROVIDER` | Captcha system (`geetest` or `none`) | `none` |
 
+### Development
+
+Start the development server with hot reload:
+
+```bash
+npm run dev
+```
+
+### Building
+
+Build the TypeScript project:
+
+```bash
+npm run build
+```
+
+### Production
+
+Start the built application:
+
+```bash
+npm start
+```
+
+### Testing
+
+Run tests:
+
+```bash
+npm test
+```
+
+### Linting and Formatting
+
+Check code quality:
+
+```bash
+npm run lint
+```
+
+Format code:
+
+```bash
+npm run format
+```
+
 ## Web API
+
+### Authentication
+
+Administrative endpoints require authentication via one of three methods:
+
+1.  **Session (Browser)**: Log in via the `/admin` portal. Subsequent requests will be authenticated via cookies.
+2.  **Local Access**: Requests originating from `127.0.0.1` or `::1` are automatically authorized as administrator.
+3.  **Dynamic Admin Secret**: For external scripts/bots. Send an encrypted string using the `ADMIN_SECRET` configured in `.env`.
+    *   **Header**: `X-Admin-Secret: <ENCRYPTED_HEX>`
+    *   **Query**: `?admin_secret=<ENCRYPTED_HEX>`
 
 ### Public Endpoints
 
@@ -75,6 +162,10 @@ TypeScript-based Node.js server with TCP support for multiplayer gaming.
 | `GET` | `/api/admin/bans` | List all User ID and Console IP bans |
 | `POST` | `/api/admin/ban` | Issue a new ban (Timed or Permanent) |
 | `POST` | `/api/admin/unban` | Remove a ban from ID or IP |
+
+## TCP Protocol
+
+The server uses TCP sockets for communication. Clients can connect to the server using a TCP socket and send binary-formatted messages (compatible with the Phira protocol).
 
 ## Related Projects
 
