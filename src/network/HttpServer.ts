@@ -171,16 +171,13 @@ export class HttpServer {
   }
 
   private adminAuth(req: express.Request, res: express.Response, next: express.NextFunction): void {
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-    
-    const isAdmin = (req.session as AdminSession).isAdmin || isLocal;
+    const isAdmin = (req.session as AdminSession).isAdmin;
     const providedSecret = req.header('X-Admin-Secret') || (req.query.admin_secret as string);
 
     const isSecretValid = providedSecret ? this.verifyAdminSecret(providedSecret) : false;
 
     if (isAdmin || isSecretValid) {
-        // If authenticated via secret/local but not session, we can optionally mark session as admin
+        // If authenticated via secret but not session, we can optionally mark session as admin
         if (!isAdmin && (req.session as AdminSession)) {
             (req.session as AdminSession).isAdmin = true;
         }
@@ -351,9 +348,7 @@ export class HttpServer {
     });
 
     this.app.get('/check-auth', (req, res) => {
-        const ip = req.ip || req.socket.remoteAddress || 'unknown';
-        const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-        const isAdmin = ((req.session as AdminSession).isAdmin || isLocal) ?? false;
+        const isAdmin = (req.session as AdminSession).isAdmin ?? false;
         return res.json({ isAdmin });
     });
 
