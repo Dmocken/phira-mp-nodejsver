@@ -57,7 +57,7 @@
 npm install
 ```
 
-### 环境变量配置 (.env)
+## 环境变量配置 (.env)
 
 | 变量名 | 描述 | 默认值 |
 | :--- | :--- | :--- |
@@ -77,22 +77,6 @@ npm install
 | `SESSION_SECRET` | 会话加密密钥 | (默认不安全值) |
 | `LOG_LEVEL` | 日志级别 (`debug`, `info`, `warn`, `error`) | `info` |
 | `CAPTCHA_PROVIDER` | 验证码提供商 (`geetest` 或 `none`) | `none` |
-
-### 开发模式
-
-启动带热重载的开发服务器：
-
-```bash
-npm run dev
-```
-
-### 构建
-
-编译 TypeScript 项目：
-
-```bash
-npm run build
-```
 
 ## 部署与运行
 
@@ -127,28 +111,6 @@ npm run build
 npm start
 ```
 
-### 测试
-
-运行测试：
-
-```bash
-npm test
-```
-
-### 代码检查与格式化
-
-检查代码质量：
-
-```bash
-npm run lint
-```
-
-格式化代码：
-
-```bash
-npm run format
-```
-
 ## Web API
 
 ### 鉴权方式
@@ -161,30 +123,54 @@ npm run format
 
 ### 公开接口
 
-| 方法 | URL | 描述 |
-| :--- | :--- | :--- |
-| `GET` | `/api/status` | 返回服务器信息、在线人数及房间列表 |
-| `GET` | `/api/config/public` | 返回公共配置（如验证码类型） |
-| `POST` | `/api/test/verify-captcha` | 验证验证码 Token |
-| `GET` | `/check-auth` | 返回当前管理员鉴权状态 |
+| 方法 | URL | 描述 | 请求参数 |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/status` | 返回服务器信息、在线人数及房间列表 | 无 |
+| `GET` | `/api/config/public` | 返回公共配置（如验证码类型） | 无 |
+| `POST` | `/api/test/verify-captcha` | 验证验证码 Token | 验证码字段 |
+| `GET` | `/check-auth` | 返回当前管理员鉴权状态 | 无 |
 
 ### 管理员接口 (需要鉴权)
 
-| 方法 | URL | 描述 |
-| :--- | :--- | :--- |
-| `GET` | `/api/all-players` | 列出全服所有在线玩家（含大厅） |
-| `POST` | `/api/admin/server-message` | 向指定房间发送系统消息 |
-| `POST` | `/api/admin/broadcast` | 向全服或指定房间发送广播 |
-| `POST` | `/api/admin/bulk-action` | 批量关闭/锁定/解锁房间或修改人数 |
-| `POST` | `/api/admin/kick-player` | 踢出玩家并切断其网络连接 |
-| `POST` | `/api/admin/force-start` | 强制开始指定房间的游戏 |
-| `POST` | `/api/admin/toggle-lock` | 切换房间锁定状态 |
-| `POST` | `/api/admin/set-max-players` | 修改房间人数上限 |
-| `POST` | `/api/admin/close-room` | 强制关闭指定房间 |
-| `POST` | `/api/admin/toggle-mode` | 切换房间模式（普通/循环） |
-| `GET` | `/api/admin/bans` | 列出所有用户 ID 和控制台 IP 封禁 |
-| `POST` | `/api/admin/ban` | 执行新的封禁（限时或永久） |
-| `POST` | `/api/admin/unban` | 解除对指定 ID 或 IP 的封禁 |
+| 方法 | URL | 描述 | 请求参数 (JSON) |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/all-players` | 列出全服所有在线玩家（含大厅） | 无 |
+| `POST` | `/api/admin/server-message` | 向指定房间发送系统消息 | `roomId`, `content` |
+| `POST` | `/api/admin/broadcast` | 向全服或指定房间发送广播 | `content`, `target?` |
+| `POST` | `/api/admin/bulk-action` | 批量控制房间 | `action`, `target`, `value?` |
+| `POST` | `/api/admin/kick-player` | 踢出玩家并切断其网络连接 | `userId` |
+| `POST` | `/api/admin/force-start` | 强制开始指定房间的游戏 | `roomId` |
+| `POST` | `/api/admin/toggle-lock` | 切换房间锁定状态 | `roomId` |
+| `POST` | `/api/admin/set-max-players` | 修改房间人数上限 | `roomId`, `maxPlayers` |
+| `POST` | `/api/admin/close-room` | 强制关闭指定房间 | `roomId` |
+| `POST` | `/api/admin/toggle-mode` | 切换房间模式（普通/循环） | `roomId` |
+| `GET` | `/api/admin/bans` | 列出所有用户 ID 和控制台 IP 封禁 | 无 |
+| `POST` | `/api/admin/ban` | 执行新的封禁（限时或永久） | `type`, `target`, `duration?`, `reason?` |
+| `POST` | `/api/admin/unban` | 解除对指定 ID 或 IP 的封禁 | `type`, `target` |
+
+### API 调用示例
+
+#### **获取服务器状态**
+```bash
+curl http://localhost:8080/api/status
+```
+
+#### **发送全服广播 (使用 Admin Secret 鉴权)**
+```bash
+curl -X POST http://localhost:8080/api/admin/broadcast \
+     -H "Content-Type: application/json" \
+     -H "X-Admin-Secret: 你的加密密钥" \
+     -d '{"content": "大家好！", "target": "all"}'
+```
+
+#### **踢出玩家 (JavaScript Fetch 示例)**
+```javascript
+fetch('/api/admin/kick-player', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: 12345 })
+});
+```
 
 ## 相关项目
 

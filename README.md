@@ -57,7 +57,7 @@ TypeScript-based Node.js server with TCP support for multiplayer gaming.
 npm install
 ```
 
-### Configuration (.env)
+## Configuration (.env)
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
@@ -77,22 +77,6 @@ npm install
 | `SESSION_SECRET` | Secret for session encryption | (Insecure Default) |
 | `LOG_LEVEL` | Logging level (`debug`, `info`, `warn`, `error`) | `info` |
 | `CAPTCHA_PROVIDER` | Captcha system (`geetest` or `none`) | `none` |
-
-### Development
-
-Start the development server with hot reload:
-
-```bash
-npm run dev
-```
-
-### Building
-
-Build the TypeScript project:
-
-```bash
-npm run build
-```
 
 ## Deployment & Running
 
@@ -119,34 +103,12 @@ Build the versions using `npm run package:all` (files will be in `outputs/`).
   ```
 - Open via Right Click -> Open if blocked by Gatekeeper.
 
-### Production
+### Production (Source Mode)
 
-Start the built application (source mode):
+Start the built application:
 
 ```bash
 npm start
-```
-
-### Testing
-
-Run tests:
-
-```bash
-npm test
-```
-
-### Linting and Formatting
-
-Check code quality:
-
-```bash
-npm run lint
-```
-
-Format code:
-
-```bash
-npm run format
 ```
 
 ## Web API
@@ -163,30 +125,54 @@ Administrative endpoints require authentication via one of three methods:
 
 ### Public Endpoints
 
-| Method | URL | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/status` | Returns server info, player count, and room list |
-| `GET` | `/api/config/public` | Returns public config (e.g., captcha provider) |
-| `POST` | `/api/test/verify-captcha` | Verifies a captcha token |
-| `GET` | `/check-auth` | Returns current administrative status |
+| Method | URL | Description | Parameters |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/status` | Returns server info and room list | None |
+| `GET` | `/api/config/public` | Returns public config | None |
+| `POST` | `/api/test/verify-captcha` | Verifies a captcha token | Captcha Fields |
+| `GET` | `/check-auth` | Returns admin status | None |
 
 ### Administrative Endpoints (Requires Auth)
 
-| Method | URL | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/all-players` | List all connected players (including lobby) |
-| `POST` | `/api/admin/server-message` | Send system message to a specific room |
-| `POST` | `/api/admin/broadcast` | Send global broadcast to all/selected rooms |
-| `POST` | `/api/admin/bulk-action` | Close/Lock/Unlock/Resize multiple rooms |
-| `POST` | `/api/admin/kick-player` | Kick player and terminate connection |
-| `POST` | `/api/admin/force-start` | Forcefully start a game in a room |
-| `POST` | `/api/admin/toggle-lock` | Toggle the lock status of a room |
-| `POST` | `/api/admin/set-max-players` | Update max players for a room |
-| `POST` | `/api/admin/close-room` | Forcefully close a specific room |
-| `POST` | `/api/admin/toggle-mode` | Toggle room mode (Normal/Cycle) |
-| `GET` | `/api/admin/bans` | List all User ID and Console IP bans |
-| `POST` | `/api/admin/ban` | Issue a new ban (Timed or Permanent) |
-| `POST` | `/api/admin/unban` | Remove a ban from ID or IP |
+| Method | URL | Description | Parameters (JSON) |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/all-players` | List all connected players | None |
+| `POST` | `/api/admin/server-message` | Send message to room | `roomId`, `content` |
+| `POST` | `/api/admin/broadcast` | Global broadcast | `content`, `target?` |
+| `POST` | `/api/admin/bulk-action` | Batch control rooms | `action`, `target`, `value?` |
+| `POST` | `/api/admin/kick-player` | Force disconnect player | `userId` |
+| `POST` | `/api/admin/force-start` | Force start room game | `roomId` |
+| `POST` | `/api/admin/toggle-lock` | Toggle room lock | `roomId` |
+| `POST` | `/api/admin/set-max-players` | Update room size | `roomId`, `maxPlayers` |
+| `POST` | `/api/admin/close-room` | Close a specific room | `roomId` |
+| `POST` | `/api/admin/toggle-mode` | Toggle Cycle mode | `roomId` |
+| `GET` | `/api/admin/bans` | List current bans | None |
+| `POST` | `/api/admin/ban` | Issue a new ban | `type`, `target`, `duration?`, `reason?` |
+| `POST` | `/api/admin/unban` | Remove a ban | `type`, `target` |
+
+### API Examples
+
+#### **Get Server Status**
+```bash
+curl http://localhost:8080/api/status
+```
+
+#### **Send Global Broadcast (via Admin Secret)**
+```bash
+curl -X POST http://localhost:8080/api/admin/broadcast \
+     -H "Content-Type: application/json" \
+     -H "X-Admin-Secret: YOUR_ENCRYPTED_SECRET" \
+     -d '{"content": "Hello Players!", "target": "all"}'
+```
+
+#### **Kick Player (via Fetch)**
+```javascript
+fetch('/api/admin/kick-player', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: 12345 })
+});
+```
 
 ## TCP Protocol
 
