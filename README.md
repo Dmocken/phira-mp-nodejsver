@@ -128,8 +128,6 @@ Administrative endpoints require authentication via one of three methods:
 | Method | URL | Description | Parameters |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/status` | Returns server info and room list | None |
-| `GET` | `/api/config/public` | Returns public config | None |
-| `POST` | `/api/test/verify-captcha` | Verifies a captcha token | Captcha Fields |
 | `GET` | `/check-auth` | Returns admin status | None |
 
 ### Administrative Endpoints (Requires Auth)

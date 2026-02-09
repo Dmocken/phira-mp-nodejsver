@@ -249,19 +249,6 @@ export class HttpServer {
         res.sendFile(path.join(publicPath, 'panel.html'));
     });
 
-    this.app.post('/api/test/verify-captcha', async (req, res) => {
-        const ip = req.ip || req.socket.remoteAddress || 'unknown';
-        const result = await this.verifyCaptcha(req, ip);
-        res.json(result);
-    });
-
-    this.app.get('/api/config/public', (_req, res) => {
-        res.json({
-            captchaProvider: this.config.captchaProvider,
-            geetestId: this.config.geetestId,
-        });
-    });
-
     this.app.post('/login', async (req, res) => {
       const { username, password } = req.body;
       const ip = req.ip || req.socket.remoteAddress || 'unknown';

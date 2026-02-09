@@ -126,8 +126,6 @@ npm start
 | 方法 | URL | 描述 | 请求参数 |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/status` | 返回服务器信息、在线人数及房间列表 | 无 |
-| `GET` | `/api/config/public` | 返回公共配置（如验证码类型） | 无 |
-| `POST` | `/api/test/verify-captcha` | 验证验证码 Token | 验证码字段 |
 | `GET` | `/check-auth` | 返回当前管理员鉴权状态 | 无 |
 
 ### 管理员接口 (需要鉴权)
