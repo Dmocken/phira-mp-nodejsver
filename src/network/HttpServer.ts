@@ -37,6 +37,9 @@ export class HttpServer {
     this.app = express();
     this.server = createServer(this.app);
 
+    // Trust Nginx proxy headers (X-Forwarded-For)
+    this.app.set('trust proxy', true);
+
     // Initialize session parser
     this.sessionParser = session({
       secret: this.config.sessionSecret,
