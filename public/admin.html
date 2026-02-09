@@ -231,44 +231,42 @@
                 }
             });
 
-            try {
-                const response = await fetch('/api/config/public');
-                const config = await response.json();
+            // Try to use injected config
+            const config = window.SERVER_CONFIG || { captchaProvider: 'none' };
 
-                if (config.captchaProvider === 'geetest') {
-                    const script = document.createElement('script');
-                    script.src = "https://static.geetest.com/v4/gt4.js";
-                    script.onload = () => {
-                        window.initGeetest4({
-                            captchaId: config.geetestId,
-                            product: 'float',
-                            language: I18n.currentLang === 'zh' ? 'zh-cn' : 'en',
-                        }, (captchaObj) => {
-                            geetestInstance = captchaObj;
-                            captchaObj.appendTo('#captcha-widget');
-                            captchaObj.onSuccess(() => {
-                                const result = captchaObj.getValidate();
-                                // Add geetest parameters to form
-                                Object.keys(result).forEach(key => {
-                                    const input = document.createElement('input');
-                                    input.type = 'hidden';
-                                    input.name = key;
-                                    input.value = result[key];
-                                    loginForm.appendChild(input);
-                                });
-                                loginBtn.disabled = false;
+            if (config.captchaProvider === 'geetest') {
+                const script = document.createElement('script');
+                script.src = "https://static.geetest.com/v4/gt4.js";
+                script.onload = () => {
+                    window.initGeetest4({
+                        captchaId: config.geetestId,
+                        product: 'float',
+                        language: I18n.currentLang === 'zh' ? 'zh-cn' : 'en',
+                    }, (captchaObj) => {
+                        geetestInstance = captchaObj;
+                        captchaObj.appendTo('#captcha-widget');
+                        captchaObj.onSuccess(() => {
+                            const result = captchaObj.getValidate();
+                            // Add geetest parameters to form
+                            Object.keys(result).forEach(key => {
+                                const input = document.createElement('input');
+                                input.type = 'hidden';
+                                input.name = key;
+                                input.value = result[key];
+                                loginForm.appendChild(input);
                             });
-                            captchaObj.onError(() => {
-                                captchaWidget.innerHTML = `<p style="color:var(--danger-color); font-size:0.8rem;">${I18n.t('admin.captcha_error')}</p>`;
-                            });
+                            loginBtn.disabled = false;
                         });
-                    };
-                    document.head.appendChild(script);
-                } else {
-                    loginBtn.disabled = false;
-                    captchaWidget.style.display = 'none';
-                }
-            } catch (error) { loginBtn.disabled = false; }
+                        captchaObj.onError(() => {
+                            captchaWidget.innerHTML = `<p style="color:var(--danger-color); font-size:0.8rem;">${I18n.t('admin.captcha_error')}</p>`;
+                        });
+                    });
+                };
+                document.head.appendChild(script);
+            } else {
+                loginBtn.disabled = false;
+                captchaWidget.style.display = 'none';
+            }
         }
 
         document.addEventListener('DOMContentLoaded', initCaptcha);

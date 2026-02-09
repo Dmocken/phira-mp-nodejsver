@@ -32,12 +32,13 @@ ADMIN_PASSWORD=password
 # AES Secret for remote API access
 ADMIN_SECRET=
 
-# Admin Phira IDs (comma separated)
-ADMIN_PHIRA_ID=
-# Owner Phira IDs (comma separated)
-OWNER_PHIRA_ID=
 # IDs of users to silence in logs
 SILENT_PHIRA_IDS=
+
+# Server Announcement Message
+# Supports {{name}} and {{serverName}} placeholders
+# Use \\n for new lines
+SERVER_ANNOUNCEMENT="你好{{name}}，欢迎来到 {{serverName}} 服务器"
 
 # Session Encryption Secret
 SESSION_SECRET=a-very-insecure-secret-change-it
@@ -98,6 +99,7 @@ export interface ServerConfig {
   adminPhiraId: number[];
   ownerPhiraId: number[];
   silentPhiraIds: number[];
+  serverAnnouncement: string;
   sessionSecret: string;
   captchaProvider: 'geetest' | 'none';
   geetestId?: string;
@@ -128,6 +130,7 @@ const defaultConfig: ServerConfig = {
   adminPhiraId: [],
   ownerPhiraId: [],
   silentPhiraIds: [],
+  serverAnnouncement: `你好{{name}}，欢迎来到 {{serverName}} 服务器`,
   sessionSecret: 'a-very-insecure-secret-change-it',
   captchaProvider: 'none',
 };
@@ -228,6 +231,7 @@ export const createServerConfig = (overrides: Partial<ServerConfig> = {}): Serve
     adminPhiraId: parseNumberList(process.env.ADMIN_PHIRA_ID, defaultConfig.adminPhiraId),
     ownerPhiraId: parseNumberList(process.env.OWNER_PHIRA_ID, defaultConfig.ownerPhiraId),
     silentPhiraIds: parseNumberList(process.env.SILENT_PHIRA_IDS, defaultConfig.silentPhiraIds),
+    serverAnnouncement: process.env.SERVER_ANNOUNCEMENT ?? defaultConfig.serverAnnouncement,
     sessionSecret: process.env.SESSION_SECRET ?? defaultConfig.sessionSecret,
     captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase() as  'geetest' | 'none',
     geetestId: process.env.GEETEST_ID,

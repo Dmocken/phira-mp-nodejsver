@@ -242,7 +242,24 @@ export class HttpServer {
       if ((req.session as AdminSession).isAdmin) {
         return res.redirect('/');
       }
-      res.sendFile(path.join(publicPath, 'admin.html'));
+      
+      const adminHtmlPath = path.join(publicPath, 'admin.html');
+      try {
+          let html = fs.readFileSync(adminHtmlPath, 'utf8');
+          // Inject configuration before the closing head tag or before scripts
+          const configScript = `
+          <script>
+            window.SERVER_CONFIG = {
+                captchaProvider: ${JSON.stringify(this.config.captchaProvider)},
+                geetestId: ${JSON.stringify(this.config.geetestId)}
+            };
+          </script>`;
+          html = html.replace('</head>', `${configScript}</head>`);
+          res.send(html);
+      } catch (err) {
+          this.logger.error(`读取 admin.html 失败: ${err}`);
+          res.status(500).send('Internal Server Error');
+      }
     });
 
     this.app.get('/panel', this.adminAuth.bind(this), (_req, res) => {

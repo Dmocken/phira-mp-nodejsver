@@ -55,7 +55,16 @@ export const createApplication = (overrides?: Partial<ServerConfig>): Applicatio
   const roomManager = new InMemoryRoomManager(roomLogger, config.roomSize, broadcastRooms);
   const authService = new PhiraAuthService(config.phiraApiUrl, authLogger);
   const banManager = new BanManager(authLogger);
-  const protocolHandler = new ProtocolHandler(roomManager, authService, protocolLogger, config.serverName, config.phiraApiUrl, broadcastStats, banManager);
+  const protocolHandler = new ProtocolHandler(
+    roomManager, 
+    authService, 
+    protocolLogger, 
+    config.serverName, 
+    config.phiraApiUrl, 
+    broadcastStats, 
+    banManager,
+    config.serverAnnouncement
+  );
   
   const networkServer = new NetworkServer(config, logger, protocolHandler);
   let httpServer: HttpServer | undefined;

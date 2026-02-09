@@ -74,6 +74,7 @@ npm install
 | `ADMIN_PHIRA_ID` | 管理员 Phira ID 列表 (逗号分隔) | (空) |
 | `OWNER_PHIRA_ID` | 所有者 Phira ID 列表 (逗号分隔) | (空) |
 | `SILENT_PHIRA_IDS` | **静默用户** ID 列表 (不产生日志) | (空) |
+| `SERVER_ANNOUNCEMENT` | 玩家加入服务器时显示的欢迎公告内容 | (简版默认值) |
 | `SESSION_SECRET` | 会话加密密钥 | (默认不安全值) |
 | `LOG_LEVEL` | 日志级别 (`debug`, `info`, `warn`, `error`) | `info` |
 | `CAPTCHA_PROVIDER` | 验证码提供商 (`geetest` 或 `none`) | `none` |

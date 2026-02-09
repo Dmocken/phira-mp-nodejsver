@@ -74,6 +74,7 @@ npm install
 | `ADMIN_PHIRA_ID` | List of Admin Phira IDs (comma separated) | (Empty) |
 | `OWNER_PHIRA_ID` | List of Owner Phira IDs (comma separated) | (Empty) |
 | `SILENT_PHIRA_IDS` | IDs of users whose actions won't be logged | (Empty) |
+| `SERVER_ANNOUNCEMENT` | Welcome message shown to players upon joining | (Simplified Default) |
 | `SESSION_SECRET` | Secret for session encryption | (Insecure Default) |
 | `LOG_LEVEL` | Logging level (`debug`, `info`, `warn`, `error`) | `info` |
 | `CAPTCHA_PROVIDER` | Captcha system (`geetest` or `none`) | `none` |

@@ -44,6 +44,7 @@ export class ProtocolHandler {
     private readonly phiraApiUrl: string,
     private readonly onSessionChange?: () => void,
     private readonly banManager?: BanManager,
+    private readonly serverAnnouncement: string = '你好{{name}}，欢迎来到 {{serverName}} 服务器',
   ) {}
 
   public getSessionCount(): number {
@@ -775,12 +776,16 @@ export class ProtocolHandler {
         });
 
 
+        const announcement = this.serverAnnouncement
+          .replace(/{{name}}/g, userInfo.name)
+          .replace(/{{serverName}}/g, this.serverName);
+
         this.respond(connectionId, sendResponse, {
           type: ServerCommandType.Message,
           message: {
             type: 'Chat',
             user: -1,
-            content: `\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nHi,${userInfo.name}！欢迎来到 ${this.serverName} 服务器，希望你能在这里玩的开心呢\n=========公告==========\nFunXLink Studio Phira Server\n1. 服务器ip：phira.funxlink.fun:19723\n2. 服务器QQ群：762722951\n3. 服务器捐赠链接：https://afdian.com/a/chuzouX\n=========公告==========\n\n=========游玩须知==========\n1. 联机大厅【官方】：https://phi.funxlink.fun\n2. 联机大厅【dmocken】：https://phira.dmocken.top/mulity\n3. 默认开房间是在联机大厅公开房间号的\n4. 如果你不想让你的房间公布 请使用sm开头作为房间号\n5. 房间内默认有一个名称为FunXLink Studio的机器人 不影响游玩\n=========游玩须知==========\n\nEnjoy~`,
+            content: announcement,
           },
         });
       } catch (error) {
