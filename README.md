@@ -94,9 +94,34 @@ Build the TypeScript project:
 npm run build
 ```
 
+## Deployment & Running
+
+The project can be built into a standalone executable for multiple platforms.
+
+### 1. Download/Build Executable
+Build the versions using `npm run package:all` (files will be in `outputs/`).
+
+### 2. Platform Specifics
+
+#### **Windows**
+- Simply double-click `phira-mp-nodejsver.exe`.
+- A default `.env` file will be generated automatically on first run.
+
+#### **Linux**
+- Grant executable permission: `chmod +x phira-mp-nodejsver-linux`
+- Run: `./phira-mp-nodejsver-linux`
+
+#### **macOS**
+- Grant executable permission: `chmod +x phira-mp-nodejsver-macos-arm64` (or `x64`)
+- **Signature Fix**: If the app fails to start, run this in terminal:
+  ```bash
+  codesign --sign - phira-mp-nodejsver-macos-arm64
+  ```
+- Open via Right Click -> Open if blocked by Gatekeeper.
+
 ### Production
 
-Start the built application:
+Start the built application (source mode):
 
 ```bash
 npm start

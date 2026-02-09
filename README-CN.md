@@ -94,7 +94,32 @@ npm run dev
 npm run build
 ```
 
-### 生产环境
+## 部署与运行
+
+本项目支持打包为独立的可执行文件（无需安装 Node.js 即可运行）。
+
+### 1. 下载或构建
+使用 `npm run package:all` 构建所有版本（文件将生成在 `outputs/` 目录中）。
+
+### 2. 各平台运行方式
+
+#### **Windows**
+- 直接双击 `phira-mp-nodejsver.exe`。
+- 首次运行会自动生成默认的 `.env` 配置文件。
+
+#### **Linux**
+- 赋予执行权限：`chmod +x phira-mp-nodejsver-linux`
+- 启动：`./phira-mp-nodejsver-linux`
+
+#### **macOS**
+- 赋予执行权限：`chmod +x phira-mp-nodejsver-macos-arm64` (或 `x64`)
+- **修复签名警告**：如果无法启动，请在终端运行：
+  ```bash
+  codesign --sign - phira-mp-nodejsver-macos-arm64
+  ```
+- **右键打开**：如果被系统拦截，请右键点击文件选择“打开”。
+
+### 生产环境 (源码模式)
 
 启动构建后的应用：
 

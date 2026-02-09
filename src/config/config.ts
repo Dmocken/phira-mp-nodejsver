@@ -3,18 +3,71 @@
  * Copyright (c) 2024
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
+
+const ensureEnvFile = () => {
+  const envPath = path.join(process.cwd(), '.env');
+  if (!fs.existsSync(envPath)) {
+    const defaultEnv = `# Phira Multiplayer Server Configuration
+
+# TCP Server Port
+PORT=12346
+# HTTP/WS Server Port
+WEB_PORT=8080
+# Server Name shown in broadcast
+SERVER_NAME=Server
+# Enable/Disable Web Server (true/false)
+ENABLE_WEB_SERVER=true
+
+# Phira API Base URL
+PHIRA_API_URL=https://phira.5wyxi.com
+
+# Default Room Size
+ROOM_SIZE=8
+
+# Admin Credentials for /panel
+ADMIN_NAME=admin
+ADMIN_PASSWORD=password
+# AES Secret for remote API access
+ADMIN_SECRET=
+
+# Admin Phira IDs (comma separated)
+ADMIN_PHIRA_ID=
+# Owner Phira IDs (comma separated)
+OWNER_PHIRA_ID=
+# IDs of users to silence in logs
+SILENT_PHIRA_IDS=
+
+# Session Encryption Secret
+SESSION_SECRET=a-very-insecure-secret-change-it
+
+# Log Level (debug, info, mark, warn, error)
+LOG_LEVEL=info
+
+# Captcha Provider (geetest or none)
+CAPTCHA_PROVIDER=none
+# GEETEST_ID=
+# GEETEST_KEY=
+`;
+    fs.writeFileSync(envPath, defaultEnv, 'utf8');
+    console.log('✅ 已自动生成默认 .env 配置文件');
+  }
+};
+
+// 执行环境初始化
+ensureEnvFile();
+
 // 只在开发环境加载 .env 文件
 if (process.env.NODE_ENV !== 'production') {
   const dotenv = require('dotenv');
-  const result = dotenv.config();
-  
-  if (result.error) {
-    console.error('加载 .env 文件失败:', result.error);
-  } else {
-    console.log('✅ 开发环境：已从 .env 加载配置');
-  }
+  dotenv.config();
+  console.log('✅ 开发环境：已从 .env 加载配置');
 } else {
-  console.log('✅ 生产环境：使用系统环境变量');
+  // 生产环境（包括打包后）也尝试加载同级目录的 .env
+  const dotenv = require('dotenv');
+  dotenv.config();
+  console.log('✅ 运行环境：已加载外部 .env 配置');
 }
 
 export interface ProtocolOptions {

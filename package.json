@@ -1,8 +1,9 @@
 {
   "name": "phira-mp-server",
-  "version": "1.0.0",
+  "version": "1.0",
   "description": "TypeScript Node.js server with TCP socket support",
   "main": "dist/index.js",
+  "bin": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "dev": "nodemon",
@@ -11,7 +12,19 @@
     "test:watch": "jest --watch",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "make-out-dir": "cross-var node -e \"require('fs').mkdirSync('./outputs/' + '$npm_package_version', { recursive: true })\"",
+    "package:exe": "npm run build && npm run make-out-dir && cross-var pkg . --targets node18-win-x64 --output ./outputs/$npm_package_version/phira-mp-nodejsver-v$npm_package_version.exe --no-bytecode",
+    "package:linux": "npm run build && npm run make-out-dir && cross-var pkg . --targets node18-linux-x64 --output ./outputs/$npm_package_version/phira-mp-nodejsver-linux-v$npm_package_version --no-bytecode",
+    "package:macos-x64": "npm run build && npm run make-out-dir && cross-var pkg . --targets node18-macos-x64 --output ./outputs/$npm_package_version/phira-mp-nodejsver-macos-x64-v$npm_package_version --no-bytecode",
+    "package:macos-arm64": "npm run build && npm run make-out-dir && cross-var pkg . --targets node18-macos-arm64 --output ./outputs/$npm_package_version/phira-mp-nodejsver-macos-arm64-v$npm_package_version --no-bytecode",
+    "package:all": "npm run package:exe && npm run package:linux && npm run package:macos-x64 && npm run package:macos-arm64"
+  },
+  "pkg": {
+    "assets": [
+      "public/**/*",
+      "data/**/*"
+    ]
   },
   "repository": {
     "type": "git",
@@ -38,11 +51,13 @@
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.46.2",
     "@typescript-eslint/parser": "^8.46.2",
+    "cross-var": "^1.1.0",
     "eslint": "^9.38.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
     "jest": "^30.2.0",
     "nodemon": "^3.1.10",
+    "pkg": "^5.8.1",
     "prettier": "^3.6.2",
     "ts-jest": "^29.4.5",
     "ts-node": "^10.9.2",
