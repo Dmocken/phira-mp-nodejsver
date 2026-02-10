@@ -22,9 +22,14 @@
 
 - 🖥️ **管理后台**：独立的 `/panel` 页面，用于服务器管理和实时监控。
 - 🎨 **UI/UX 增强**：支持深色模式（Dark Mode）和多语言国际化（i18n）。
-- 🔐 **隐藏入口**：通过点击标题 5 次触发的管理员安全访问通道。
+- 🔐 **隐藏入口**：通过标题触发的管理员安全访问通道。
 - ⚙️ **优化的房间逻辑**：改进了单人房间处理及全服广播系统。
-- 🛡️ **安全防护**：非法包即时切断、自动 IP 封禁、以及 Nginx 真实 IP 识别。
+- 🛡️ **高级安全防护**：
+    - **Proxy Protocol v2**：支持识别 frp/代理后的真实玩家 IP。
+    - **差异化封禁**：区分管理员封禁与系统封禁（系统封禁即时断开，管理员封禁显示详细原因与时长）。
+    - **登录黑名单**：管理面板登录失败自动拦截，支持自定义时长与手动管理。
+    - **封禁联动**：封禁 IP 时自动踢出该 IP 下的所有在线玩家。
+    - **审计日志**：专用 `logs/ban.log` 记录所有封禁、解封及异常登录尝试。
 
 ## 项目结构
 
@@ -64,6 +69,7 @@ npm install
 | `PORT` | 游戏 TCP 服务器监听端口 | `12346` |
 | `WEB_PORT` | HTTP/WS 管理服务器端口 | `8080` |
 | `TCP_ENABLED` | 是否启用 TCP 游戏服务器 | `true` |
+| `USE_PROXY_PROTOCOL` | 是否开启 Proxy Protocol v2 以获取真实 IP | `false` |
 | `ENABLE_WEB_SERVER` | 是否启用 Web 管理服务器 | `true` |
 | `SERVER_NAME` | 服务器在游戏内显示的播报名称 | `Server` |
 | `PHIRA_API_URL` | Phira 官方 API 地址 | `https://phira.5wyxi.com` |
@@ -73,9 +79,12 @@ npm install
 | `ADMIN_SECRET` | 外部脚本使用的加密密钥 | (空) |
 | `ADMIN_PHIRA_ID` | 管理员 Phira ID 列表 (逗号分隔) | (空) |
 | `OWNER_PHIRA_ID` | 所有者 Phira ID 列表 (逗号分隔) | (空) |
+| `BAN_ID_WHITELIST` | 封禁白名单 ID (逗号分隔) | (空) |
+| `BAN_IP_WHITELIST` | 封禁白名单 IP (逗号分隔) | (空) |
 | `SILENT_PHIRA_IDS` | **静默用户** ID 列表 (不产生日志) | (空) |
 | `SERVER_ANNOUNCEMENT` | 玩家加入服务器时显示的欢迎公告内容 | (简版默认值) |
 | `SESSION_SECRET` | 会话加密密钥 | (默认不安全值) |
+| `LOGIN_BLACKLIST_DURATION` | 后台登录失败后的黑名单拦截时长 (秒) | `600` |
 | `LOG_LEVEL` | 日志级别 (`debug`, `info`, `warn`, `error`) | `info` |
 | `CAPTCHA_PROVIDER` | 验证码提供商 (`geetest` 或 `none`) | `none` |
 
@@ -146,6 +155,9 @@ npm start
 | `GET` | `/api/admin/bans` | 列出所有用户 ID 和控制台 IP 封禁 | 无 |
 | `POST` | `/api/admin/ban` | 执行新的封禁（限时或永久） | `type`, `target`, `duration?`, `reason?` |
 | `POST` | `/api/admin/unban` | 解除对指定 ID 或 IP 的封禁 | `type`, `target` |
+| `GET` | `/api/admin/login-blacklist` | 获取管理面板登录黑名单 | 无 |
+| `POST` | `/api/admin/blacklist-ip` | 手动拉黑后台登录 IP | `ip`, `duration?` |
+| `POST` | `/api/admin/unblacklist-ip` | 解除后台登录 IP 拉黑 | `ip` |
 
 ### API 调用示例
 

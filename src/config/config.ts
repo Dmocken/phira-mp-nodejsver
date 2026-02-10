@@ -17,8 +17,8 @@ PORT=12346
 WEB_PORT=8080
 # Server Name shown in broadcast
 SERVER_NAME=Server
-# Enable/Disable Web Server (true/false)
-ENABLE_WEB_SERVER=true
+# Enable Proxy Protocol (v2) for getting real IP behind frp/nginx
+USE_PROXY_PROTOCOL=false
 
 # Phira API Base URL
 PHIRA_API_URL=https://phira.5wyxi.com
@@ -88,6 +88,7 @@ export interface ServerConfig {
   pubPrefix: string;
   enablePriWeb: boolean;
   priPrefix: string;
+  useProxyProtocol: boolean;
   protocol: ProtocolOptions;
   logging: LoggingOptions;
   phiraApiUrl: string;
@@ -98,9 +99,12 @@ export interface ServerConfig {
   adminSecret: string;
   adminPhiraId: number[];
   ownerPhiraId: number[];
+  banIdWhitelist: number[];
+  banIpWhitelist: string[];
   silentPhiraIds: number[];
   serverAnnouncement: string;
   sessionSecret: string;
+  loginBlacklistDuration: number;
   captchaProvider: 'geetest' | 'none';
   geetestId?: string;
   geetestKey?: string;
@@ -115,6 +119,7 @@ const defaultConfig: ServerConfig = {
   pubPrefix: 'pub',
   enablePriWeb: false,
   priPrefix: 'sm',
+  useProxyProtocol: false,
   protocol: {
     tcp: true,
   },
@@ -129,9 +134,12 @@ const defaultConfig: ServerConfig = {
   adminSecret: '',
   adminPhiraId: [],
   ownerPhiraId: [],
+  banIdWhitelist: [],
+  banIpWhitelist: [],
   silentPhiraIds: [],
   serverAnnouncement: `你好{{name}}，欢迎来到 {{serverName}} 服务器`,
   sessionSecret: 'a-very-insecure-secret-change-it',
+  loginBlacklistDuration: 600, // 10 minutes
   captchaProvider: 'none',
 };
 
@@ -157,6 +165,7 @@ export const env = {
   host: process.env.HOST || '0.0.0.0',
   webPort: parseInt(process.env.WEB_PORT || '8080', 10),
   enableWebServer: parseBoolean(process.env.ENABLE_WEB_SERVER, true),
+  useProxyProtocol: parseBoolean(process.env.USE_PROXY_PROTOCOL, false),
   
   // 验证码配置
   captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase() as 'geetest' | 'none',
@@ -175,10 +184,12 @@ export const env = {
   adminSecret: process.env.ADMIN_SECRET || '',
   adminPhiraId: parseNumberList(process.env.ADMIN_PHIRA_ID, []),
   ownerPhiraId: parseNumberList(process.env.OWNER_PHIRA_ID, []),
+  banIdWhitelist: parseNumberList(process.env.BAN_ID_WHITELIST, []),
+  banIpWhitelist: (process.env.BAN_IP_WHITELIST || '').split(',').map(s => s.trim()).filter(s => s !== ''),
   silentPhiraIds: parseNumberList(process.env.SILENT_PHIRA_IDS, []),
   sessionSecret: process.env.SESSION_SECRET || 'a-very-insecure-secret-change-it',
+  loginBlacklistDuration: parseInt(process.env.LOGIN_BLACKLIST_DURATION || '600', 10),
   
-
   // Phira API
   phiraApiUrl: process.env.PHIRA_API_URL || 'https://phira.5wyxi.com',
   
@@ -216,6 +227,7 @@ export const createServerConfig = (overrides: Partial<ServerConfig> = {}): Serve
     pubPrefix: process.env.PUB_PREFIX ?? defaultConfig.pubPrefix,
     enablePriWeb: parseBoolean(process.env.ENABLE_PRI_WEB, defaultConfig.enablePriWeb),
     priPrefix: process.env.PRI_PREFIX ?? defaultConfig.priPrefix,
+    useProxyProtocol: parseBoolean(process.env.USE_PROXY_PROTOCOL, defaultConfig.useProxyProtocol),
     protocol: {
       tcp: parseBoolean(process.env.TCP_ENABLED, defaultConfig.protocol.tcp),
     },
@@ -230,9 +242,12 @@ export const createServerConfig = (overrides: Partial<ServerConfig> = {}): Serve
     adminSecret: process.env.ADMIN_SECRET ?? defaultConfig.adminSecret,
     adminPhiraId: parseNumberList(process.env.ADMIN_PHIRA_ID, defaultConfig.adminPhiraId),
     ownerPhiraId: parseNumberList(process.env.OWNER_PHIRA_ID, defaultConfig.ownerPhiraId),
+    banIdWhitelist: parseNumberList(process.env.BAN_ID_WHITELIST, defaultConfig.banIdWhitelist),
+    banIpWhitelist: (process.env.BAN_IP_WHITELIST || '').split(',').map(s => s.trim()).filter(s => s !== ''),
     silentPhiraIds: parseNumberList(process.env.SILENT_PHIRA_IDS, defaultConfig.silentPhiraIds),
     serverAnnouncement: process.env.SERVER_ANNOUNCEMENT ?? defaultConfig.serverAnnouncement,
     sessionSecret: process.env.SESSION_SECRET ?? defaultConfig.sessionSecret,
+    loginBlacklistDuration: Number.parseInt(process.env.LOGIN_BLACKLIST_DURATION ?? `${defaultConfig.loginBlacklistDuration}`, 10),
     captchaProvider: (process.env.CAPTCHA_PROVIDER || 'none').toLowerCase() as  'geetest' | 'none',
     geetestId: process.env.GEETEST_ID,
     geetestKey: process.env.GEETEST_KEY,

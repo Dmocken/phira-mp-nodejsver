@@ -18,6 +18,7 @@ export interface Logger {
   warn(message: string, metadata?: LogMetadata): void;
   error(message: string, metadata?: LogMetadata): void;
   debug(message: string, metadata?: LogMetadata): void;
+  ban(message: string, metadata?: LogMetadata): void;
   setSilentIds(ids: number[]): void;
 }
 
@@ -34,6 +35,7 @@ const COLOR_CODES: Record<string, string> = {
   DEBUG: '\x1b[90m', // 灰色
   INFO: '\x1b[32m',  // 绿色
   MARK: '\x1b[36m',  // 青色
+  BAN: '\x1b[35m',   // 紫色
   WARN: '\x1b[33m',  // 黄色
   ERROR: '\x1b[31m', // 红色
 };
@@ -162,6 +164,16 @@ export class ConsoleLogger implements Logger {
     });
   }
 
+  ban(message: string, metadata: LogMetadata = {}): void {
+    // Ban logs are always logged, ignore level and silence
+    const formatted = this.formatMessage('BAN', message, metadata);
+    // Use MARK color for BAN logs in console
+    const colorFormatted = formatted.console.replace('[BAN]', `${COLOR_CODES.MARK}[BAN]${COLOR_CODES.RESET}`);
+    console.info(colorFormatted);
+    this.writeToFile(formatted.file);
+    this.writeToBanFile(formatted.file);
+  }
+
   private shouldLog(level: LogLevel): boolean {
     return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[this.minimumLevel];
   }
@@ -180,6 +192,15 @@ export class ConsoleLogger implements Logger {
     }
   }
 
+  private writeToBanFile(line: string): void {
+    try {
+      const logFile = path.join(process.cwd(), 'logs', 'ban.log');
+      fs.appendFileSync(logFile, line + '\n');
+    } catch (err) {
+      console.error('Failed to write to ban log file:', err);
+    }
+  }
+
   private formatMessage(level: string, message: any, metadata: LogMetadata): { console: string; file: string } {
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}.${String(now.getMilliseconds()).padStart(3, '0')}`;
@@ -188,6 +209,7 @@ export class ConsoleLogger implements Logger {
     if (level === 'DEBUG') color = COLOR_CODES.DEBUG;
     else if (level === 'INFO') color = COLOR_CODES.INFO;
     else if (level === 'MARK') color = COLOR_CODES.MARK;
+    else if (level === 'BAN') color = COLOR_CODES.BAN;
     else if (level === 'WARN') color = COLOR_CODES.WARN;
     else if (level === 'ERROR') color = COLOR_CODES.ERROR;
 

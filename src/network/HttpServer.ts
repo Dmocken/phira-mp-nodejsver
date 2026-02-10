@@ -23,9 +23,9 @@ export class HttpServer {
   private readonly app: express.Application;
   private readonly server: Server;
   private readonly loginAttempts = new Map<string, LoginAttempt>();
-  private readonly blacklistedIps = new Set<string>();
+  private readonly blacklistedIps = new Map<string, number>(); // ip -> expiresAt
   private sessionParser: express.RequestHandler;
-  private readonly blacklistFile = path.join(process.cwd(), 'data', 'login_blacklist.log');
+  private readonly blacklistFile = path.join(process.cwd(), 'data', 'login_blacklist.json');
   private readonly cleanupInterval: NodeJS.Timeout;
   
   constructor(
@@ -73,31 +73,83 @@ export class HttpServer {
     if (fs.existsSync(this.blacklistFile)) {
         try {
             const data = fs.readFileSync(this.blacklistFile, 'utf8');
-            const lines = data.split('\n');
-            lines.forEach(line => {
-                const match = line.match(/IP: ([\d.]+)/);
-                if (match) this.blacklistedIps.add(match[1]);
-            });
-            this.logger.info(`已从文件加载 ${this.blacklistedIps.size} 个黑名单 IP。`);
+            const entries = JSON.parse(data);
+            if (typeof entries === 'object' && !Array.isArray(entries)) {
+                Object.entries(entries).forEach(([ip, expiresAt]) => {
+                    this.blacklistedIps.set(ip, Number(expiresAt));
+                });
+            } else if (Array.isArray(entries)) {
+                // Compatibility for old Array format
+                entries.forEach(ip => this.blacklistedIps.set(ip, Date.now() + 365 * 24 * 3600 * 1000));
+            }
+            this.cleanupBlacklist();
+            this.logger.info(`已从文件加载 ${this.blacklistedIps.size} 个登录黑名单 IP。`);
         } catch (e) {
-            this.logger.error(`加载黑名单文件失败: ${e}`);
+            this.logger.error(`加载登录黑名单文件失败: ${e}`);
         }
     }
   }
 
-  private logToBlacklist(ip: string, username: string): void {
-    const timestamp = new Date().toISOString();
-    const logEntry = `[${timestamp}] IP: ${ip}, Username Attempted: ${username}, Reason: Too many failures\n`;
+  private saveBlacklist(): void {
     try {
         const dir = path.dirname(this.blacklistFile);
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
-        fs.appendFileSync(this.blacklistFile, logEntry);
-        this.blacklistedIps.add(ip);
+        const data = Object.fromEntries(this.blacklistedIps);
+        fs.writeFileSync(this.blacklistFile, JSON.stringify(data, null, 2));
     } catch (e) {
-        this.logger.error(`写入黑名单日志失败: ${e}`);
+        this.logger.error(`保存登录黑名单失败: ${e}`);
     }
+  }
+
+  private cleanupBlacklist(): void {
+    const now = Date.now();
+    let changed = false;
+    for (const [ip, expiresAt] of this.blacklistedIps.entries()) {
+        if (expiresAt < now) {
+            this.blacklistedIps.delete(ip);
+            changed = true;
+        }
+    }
+    if (changed) this.saveBlacklist();
+  }
+
+  private isBlacklisted(ip: string): boolean {
+    const expiresAt = this.blacklistedIps.get(ip);
+    if (!expiresAt) return false;
+    
+    if (expiresAt < Date.now()) {
+        this.blacklistedIps.delete(ip);
+        this.saveBlacklist();
+        return false;
+    }
+    return true;
+  }
+
+  private getRemainingBlacklistTimeStr(ip: string): string {
+    const expiresAt = this.blacklistedIps.get(ip);
+    if (!expiresAt) return '';
+    
+    const remainingMs = expiresAt - Date.now();
+    if (remainingMs <= 0) return '已过期';
+    
+    const seconds = Math.floor(remainingMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+
+    if (hours > 0) return `${hours}小时 ${minutes % 60}分钟`;
+    if (minutes > 0) return `${minutes}分钟 ${seconds % 60}秒`;
+    return `${seconds}秒`;
+  }
+
+  private logToBlacklist(ip: string, username: string): void {
+    const duration = this.config.loginBlacklistDuration;
+    const expiresAt = Date.now() + duration * 1000;
+    this.blacklistedIps.set(ip, expiresAt);
+    this.saveBlacklist();
+    const durationStr = duration >= 3600 ? `${(duration / 3600).toFixed(1)}小时` : `${Math.floor(duration / 60)}分钟`;
+    this.logger.ban(`IP ${ip} 因多次登录失败（尝试用户名: ${username}）被自动加入登录黑名单。时长: ${durationStr}`);
   }
 
   private async verifyCaptcha(req: express.Request, ip: string): Promise<{ success: boolean; message?: string }> {
@@ -271,8 +323,9 @@ export class HttpServer {
       const { username, password } = req.body;
       const ip = req.ip || req.socket.remoteAddress || 'unknown';
 
-      if (this.blacklistedIps.has(ip)) {
-          return res.status(403).send('由于您多次尝试登录失败，已被系统拉入登录黑名单，如需要解除，请联系服务器管理员');
+      if (this.isBlacklisted(ip)) {
+          const timeLeft = this.getRemainingBlacklistTimeStr(ip);
+          return res.status(403).send(`由于您多次尝试登录失败，已被系统拉入登录黑名单，剩余时长: ${timeLeft}，如需要提前解除，请联系服务器管理员`);
       }
 
       if (!username || !password) {
@@ -560,7 +613,10 @@ export class HttpServer {
             // Kick player if online
             this.protocolHandler.kickPlayer(userId);
         } else if (type === 'ip') {
-            this.banManager.banIp(String(target), duration ? Number(duration) : null, finalReason, adminName);
+            const ip = String(target);
+            this.banManager.banIp(ip, duration ? Number(duration) : null, finalReason, adminName);
+            // Kick all players with this IP
+            this.protocolHandler.kickIp(ip);
         } else {
             return res.status(400).json({ error: 'Invalid ban type' });
         }
@@ -574,13 +630,54 @@ export class HttpServer {
             return res.status(400).json({ error: 'Missing type or target' });
         }
 
+        const adminName = (req.session as AdminSession).isAdmin ? this.config.adminName : 'Admin (Secret)';
         let success = false;
         if (type === 'id') {
-            success = this.banManager.unbanId(Number(target));
+            success = this.banManager.unbanId(Number(target), adminName);
         } else if (type === 'ip') {
-            success = this.banManager.unbanIp(String(target));
+            success = this.banManager.unbanIp(String(target), adminName);
         }
 
+        return res.json({ success });
+    });
+
+    // Login Blacklist APIs
+    this.app.get('/api/admin/login-blacklist', this.adminAuth.bind(this), (_req, res) => {
+        const list = Array.from(this.blacklistedIps.entries()).map(([ip, expiresAt]) => ({
+            ip,
+            expiresAt
+        }));
+        return res.json({ blacklistedIps: list });
+    });
+
+    this.app.post('/api/admin/blacklist-ip', this.adminAuth.bind(this), (req, res) => {
+        const { ip, duration } = req.body; // duration in seconds
+        if (!ip) {
+            return res.status(400).json({ error: 'Missing ip' });
+        }
+        const adminName = (req.session as AdminSession).isAdmin ? this.config.adminName : 'Admin (Secret)';
+        const finalDuration = duration ? Number(duration) : this.config.loginBlacklistDuration;
+        const expiresAt = Date.now() + finalDuration * 1000;
+        
+        this.blacklistedIps.set(String(ip), expiresAt);
+        this.saveBlacklist();
+        
+        const durationStr = finalDuration >= 3600 ? `${(finalDuration / 3600).toFixed(1)}小时` : `${Math.floor(finalDuration / 60)}分钟`;
+        this.logger.ban(`IP ${ip} 被管理员 ${adminName} 手动加入登录黑名单。时长: ${durationStr}`);
+        return res.json({ success: true });
+    });
+
+    this.app.post('/api/admin/unblacklist-ip', this.adminAuth.bind(this), (req, res) => {
+        const { ip } = req.body;
+        if (!ip) {
+            return res.status(400).json({ error: 'Missing ip' });
+        }
+        const adminName = (req.session as AdminSession).isAdmin ? this.config.adminName : 'Admin (Secret)';
+        const success = this.blacklistedIps.delete(String(ip));
+        if (success) {
+            this.saveBlacklist();
+            this.logger.ban(`IP ${ip} 被管理员 ${adminName} 从登录黑名单中移除。`);
+        }
         return res.json({ success });
     });
 

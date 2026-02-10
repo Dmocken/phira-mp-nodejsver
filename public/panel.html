@@ -209,7 +209,7 @@
                 </div>
 
                 <div class="ban-section" style="margin-top: 30px;">
-                    <h3 data-i18n="ban.ip_bans">Console Login IP Bans</h3>
+                    <h3 data-i18n="ban.ip_bans">In-game IP Bans</h3>
                     <div class="ban-table-container">
                         <table class="ban-table">
                             <thead>
@@ -231,18 +231,47 @@
                     <div class="action-group" style="margin-top: 10px;">
                         <select id="ban-type-select" onchange="updateBanTargetUI()">
                             <option value="id" data-i18n="ban.type_user_id">User ID</option>
-                            <option value="ip" data-i18n="ban.type_console_ip">Console Login IP</option>
+                            <option value="ip" data-i18n="ban.type_game_ip">In-game IP</option>
                         </select>
                         <div id="ban-target-container" style="display: flex; flex: 1; min-width: 150px;">
                             <select id="ban-user-select" style="width: 100%;">
                                 <option value="">-- Select Player --</option>
                             </select>
-                            <input type="text" id="ban-target-input" placeholder="ID / IP" style="width: 100%; display: none;">
+                            <select id="ban-ip-select" style="width: 100%; display: none;">
+                                <option value="">-- Select IP --</option>
+                            </select>
                         </div>
                         <input type="number" id="ban-duration-input" data-i18n-placeholder="ban.duration_placeholder" style="width: 120px;">
                         <input type="text" id="ban-reason-input" data-i18n-placeholder="ban.reason_placeholder" style="flex: 1;">
                         <button onclick="executeBan()" class="admin-btn action-danger">OK</button>
                     </div>
+                </div>
+            </section>
+
+            <!-- Login Blacklist -->
+            <section class="panel-card">
+                <h2 data-i18n="admin.login_blacklist">Panel Login Blacklist</h2>
+                <div class="ban-add-section" style="margin-bottom: 15px;">
+                    <div class="action-group">
+                        <input type="text" id="blacklist-ip-input" placeholder="Enter IP Address" style="flex: 1;">
+                        <input type="number" id="blacklist-duration-input" placeholder="Seconds (optional)" style="width: 150px;">
+                        <button onclick="blacklistIpManually()" class="admin-btn action-danger">Add to Blacklist</button>
+                    </div>
+                </div>
+                <div class="ban-table-container">
+                    <table class="ban-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="ban.target">IP Address</th>
+                                <th data-i18n="ban.expires">Expires</th>
+                                <th data-i18n="room.status">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="login-blacklist-body"></tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 10px; color: var(--text-muted); font-size: 0.85rem;">
+                    * IPs are automatically added here after too many failed login attempts to the admin panel.
                 </div>
             </section>
         </div>
@@ -281,31 +310,48 @@
             try {
                 const res = await fetch('/api/all-players');
                 const players = await res.json();
-                const select = document.getElementById('ban-user-select');
-                const currentSelection = select.value;
-                select.innerHTML = '<option value="">-- Select Player --</option>';
+                
+                const uSelect = document.getElementById('ban-user-select');
+                const iSelect = document.getElementById('ban-ip-select');
+                
+                const currentU = uSelect.value;
+                const currentI = iSelect.value;
+                
+                uSelect.innerHTML = '<option value="">-- Select Player --</option>';
+                iSelect.innerHTML = '<option value="">-- Select IP --</option>';
+                
                 players.forEach(p => {
                     if (p.id === -1) return; // Skip system bot
-                    const option = document.createElement('option');
-                    option.value = p.id;
-                    option.textContent = `${p.name} (ID: ${p.id})`;
-                    select.appendChild(option);
+                    
+                    // Populate User ID select
+                    const uOption = document.createElement('option');
+                    uOption.value = p.id;
+                    uOption.textContent = `${p.name} (ID: ${p.id})`;
+                    uSelect.appendChild(uOption);
+                    
+                    // Populate IP select
+                    const iOption = document.createElement('option');
+                    iOption.value = p.ip;
+                    iOption.textContent = `${p.ip} (${p.name})`;
+                    iSelect.appendChild(iOption);
                 });
-                select.value = currentSelection;
+                
+                uSelect.value = currentU;
+                iSelect.value = currentI;
             } catch (e) { console.error('Failed to fetch players', e); }
         }
 
         function updateBanTargetUI() {
             const type = document.getElementById('ban-type-select').value;
             const userSelect = document.getElementById('ban-user-select');
-            const targetInput = document.getElementById('ban-target-input');
+            const ipSelect = document.getElementById('ban-ip-select');
             
             if (type === 'id') {
                 userSelect.style.display = 'block';
-                targetInput.style.display = 'none';
+                ipSelect.style.display = 'none';
             } else {
                 userSelect.style.display = 'none';
-                targetInput.style.display = 'block';
+                ipSelect.style.display = 'block';
             }
         }
 
@@ -409,6 +455,71 @@
             } catch (e) { console.error('Failed to fetch bans', e); }
         }
 
+        async function fetchLoginBlacklist() {
+            try {
+                const res = await fetch('/api/admin/login-blacklist');
+                const data = await res.json();
+                renderLoginBlacklist(data.blacklistedIps);
+            } catch (e) { console.error('Failed to fetch login blacklist', e); }
+        }
+
+        async function blacklistIpManually() {
+            const ipInput = document.getElementById('blacklist-ip-input');
+            const durationInput = document.getElementById('blacklist-duration-input');
+            const ip = ipInput.value.trim();
+            const duration = durationInput.value.trim();
+            if (!ip) return alert('Please enter an IP address');
+            
+            try {
+                const res = await fetch('/api/admin/blacklist-ip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ip, duration: duration || null })
+                });
+                if ((await res.json()).success) {
+                    alert(I18n.t('room.admin.success'));
+                    ipInput.value = '';
+                    durationInput.value = '';
+                    await fetchLoginBlacklist();
+                }
+            } catch (e) { alert(I18n.t('admin.action_failed')); }
+        }
+
+        function renderLoginBlacklist(ips) {
+            const body = document.getElementById('login-blacklist-body');
+            if (!body) return;
+            body.innerHTML = '';
+            if (ips.length === 0) {
+                body.innerHTML = `<tr><td colspan="3" style="text-align:center;">No IPs in blacklist</td></tr>`;
+                return;
+            }
+            ips.forEach(item => {
+                const row = document.createElement('tr');
+                const expiresStr = new Date(item.expiresAt).toLocaleString();
+                row.innerHTML = `
+                    <td>${item.ip}</td>
+                    <td>${expiresStr}</td>
+                    <td><button class="admin-btn action-success" style="margin:0; padding:4px 12px;" onclick="unblacklistIp('${item.ip}')">${I18n.t('players.unban')}</button></td>
+                `;
+                body.appendChild(row);
+            });
+        }
+
+        async function unblacklistIp(ip) {
+            if (!confirm(`Confirm remove ${ip} from login blacklist?`)) return;
+            try {
+                const res = await fetch('/api/admin/unblacklist-ip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ip })
+                });
+                if ((await res.json()).success) {
+                    alert(I18n.t('room.admin.success'));
+                    await fetchLoginBlacklist();
+                }
+            } catch (e) { alert(I18n.t('admin.action_failed')); }
+        }
+
         function renderBanList(type, bans) {
             const body = document.getElementById(`${type}-ban-list-body`);
             if (!body) return;
@@ -433,9 +544,9 @@
 
         async function executeBan() {
             const type = document.getElementById('ban-type-select').value;
-            const userSelect = document.getElementById('ban-user-select');
-            const targetInput = document.getElementById('ban-target-input');
-            const target = (type === 'id' ? userSelect.value : targetInput.value).trim();
+            const uSelect = document.getElementById('ban-user-select');
+            const iSelect = document.getElementById('ban-ip-select');
+            const target = (type === 'id' ? uSelect.value : iSelect.value).trim();
             
             const duration = document.getElementById('ban-duration-input').value.trim();
             const reason = document.getElementById('ban-reason-input').value.trim();
@@ -483,12 +594,14 @@
         document.addEventListener('i18nReady', () => {
             checkAuth();
             fetchBans();
+            fetchLoginBlacklist();
             fetchActiveRooms();
             fetchOnlinePlayers();
             
             // Periodically refresh lists
             setInterval(fetchActiveRooms, 5000);
             setInterval(fetchOnlinePlayers, 5000);
+            setInterval(fetchLoginBlacklist, 10000);
 
             const isDark = document.body.classList.contains('dark-mode');
             document.getElementById('theme-icon').textContent = isDark ? '☀️' : '🌙';

@@ -20,11 +20,16 @@ TypeScript-based Node.js server with TCP support for multiplayer gaming.
 
 ### Enhanced Features (by chuzouX)
 
-- 🖥️ **Web Dashboard & Admin System**: A standalone `/panel` for server management.
+- 🖥️ **Web Dashboard & Admin System**: A standalone `/panel` for server management and real-time monitoring.
 - 🎨 **Enhanced UI/UX**: Support for Dark Mode and multi-language internationalization (i18n).
 - 🔐 **Hidden Management Portal**: Secure hidden access for super administrators via Easter Egg.
 - ⚙️ **Optimized Room Logic**: Improved handling for solo rooms and server-side announcements.
-- 🛡️ **Security**: Anti-clogging for illegal packets, auto IP banning, and proxy support (Nginx).
+- 🛡️ **Advanced Security**: 
+    - Support for **Proxy Protocol v2** (detecting real IP behind frp/proxies).
+    - Differentiated **Admin vs System bans** (System bans drop connections instantly; Admin bans show detailed reasons).
+    - **Login Blacklist** for management panel with custom duration.
+    - Automatic **IP kicking** when an IP is banned.
+    - **Audit Log**: Dedicated `logs/ban.log` for tracking all ban/unban actions and suspicious activities.
 
 ## Project Structure
 
@@ -64,6 +69,7 @@ npm install
 | `PORT` | Game TCP server port | `12346` |
 | `WEB_PORT` | HTTP/WS management server port | `8080` |
 | `TCP_ENABLED` | Enable/Disable TCP server | `true` |
+| `USE_PROXY_PROTOCOL` | Enable Proxy Protocol v2 for real IP | `false` |
 | `ENABLE_WEB_SERVER` | Enable/Disable HTTP server | `true` |
 | `SERVER_NAME` | Server broadcast name | `Server` |
 | `PHIRA_API_URL` | Base URL for Phira API | `https://phira.5wyxi.com` |
@@ -73,9 +79,12 @@ npm install
 | `ADMIN_SECRET` | Secret key for encrypted admin API access | (Empty) |
 | `ADMIN_PHIRA_ID` | List of Admin Phira IDs (comma separated) | (Empty) |
 | `OWNER_PHIRA_ID` | List of Owner Phira IDs (comma separated) | (Empty) |
+| `BAN_ID_WHITELIST` | IDs that cannot be banned | (Empty) |
+| `BAN_IP_WHITELIST` | IPs that cannot be banned | (Empty) |
 | `SILENT_PHIRA_IDS` | IDs of users whose actions won't be logged | (Empty) |
 | `SERVER_ANNOUNCEMENT` | Welcome message shown to players upon joining | (Simplified Default) |
 | `SESSION_SECRET` | Secret for session encryption | (Insecure Default) |
+| `LOGIN_BLACKLIST_DURATION` | Seconds to blacklist IP after login failures | `600` |
 | `LOG_LEVEL` | Logging level (`debug`, `info`, `warn`, `error`) | `info` |
 | `CAPTCHA_PROVIDER` | Captcha system (`geetest` or `none`) | `none` |
 
@@ -148,6 +157,9 @@ Administrative endpoints require authentication via one of three methods:
 | `GET` | `/api/admin/bans` | List current bans | None |
 | `POST` | `/api/admin/ban` | Issue a new ban | `type`, `target`, `duration?`, `reason?` |
 | `POST` | `/api/admin/unban` | Remove a ban | `type`, `target` |
+| `GET` | `/api/admin/login-blacklist` | List panel login blacklist | None |
+| `POST` | `/api/admin/blacklist-ip` | Manually blacklist IP for login | `ip`, `duration?` |
+| `POST` | `/api/admin/unblacklist-ip` | Remove IP from login blacklist | `ip` |
 
 ### API Examples
 

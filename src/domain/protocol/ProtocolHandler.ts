@@ -55,6 +55,33 @@ export class ProtocolHandler {
     return this.banManager;
   }
 
+  public updateConnectionIp(connectionId: string, ip: string): void {
+    this.connectionIps.set(connectionId, ip);
+    const session = this.sessions.get(connectionId);
+    if (session) {
+      session.ip = ip;
+    }
+  }
+
+  public kickIp(ip: string): void {
+    const connectionsToKick = Array.from(this.connectionIps.entries())
+      .filter(([_, connIp]) => connIp === ip);
+    
+    for (const [connectionId, _] of connectionsToKick) {
+      const session = this.sessions.get(connectionId);
+      if (session) {
+        this.logger.info(`IP ${ip} 已被封禁，正在踢出玩家 ${session.userId} (${session.userInfo.name})`, { userId: -1 });
+        this.kickPlayer(session.userId);
+      } else {
+        const closer = this.connectionClosers.get(connectionId);
+        if (closer) {
+          this.logger.info(`IP ${ip} 已被封禁，正在强制断开未验证连接 ${connectionId}`, { userId: -1 });
+          closer();
+        }
+      }
+    }
+  }
+
   public sendServerMessage(roomId: string, content: string): void {
     const room = this.roomManager.getRoom(roomId);
     if (room) {
@@ -688,12 +715,31 @@ export class ProtocolHandler {
         const basicUserInfo = await this.authService.authenticate(token);
 
         if (this.banManager) {
-          const banInfo = this.banManager.isIdBanned(basicUserInfo.id);
-          if (banInfo) {
-            this.logger.warn(`拦截到封禁用户 ${basicUserInfo.id} (${basicUserInfo.name}) 的登录尝试。原因: ${banInfo.reason}`, { userId: basicUserInfo.id });
+          // 1. Check IP Ban (Admin bans only, System bans are dropped at socket level)
+          const ip = this.connectionIps.get(connectionId) || 'unknown';
+          const ipBanInfo = this.banManager.isIpBanned(ip);
+          if (ipBanInfo && ipBanInfo.adminName !== 'System') {
+            const timeLeft = this.banManager.getRemainingTimeStr(ipBanInfo.expiresAt);
+            const admin = ipBanInfo.adminName || '未知';
+            this.logger.ban(`拦截到来自封禁 IP ${ip} (${basicUserInfo.name}) 的登录尝试。原因: ${ipBanInfo.reason} (操作员: ${admin}, 剩余时长: ${timeLeft})`, { userId: basicUserInfo.id });
             this.respond(connectionId, sendResponse, {
               type: ServerCommandType.Authenticate,
-              result: { ok: false, error: `您已被封禁。原因: ${banInfo.reason}` },
+              result: { ok: false, error: `您的 IP 已被封禁。\n原因: ${ipBanInfo.reason}\n操作员: ${admin}\n剩余时长: ${timeLeft}` },
+            });
+            const closer = this.connectionClosers.get(connectionId);
+            if (closer) closer();
+            return;
+          }
+
+          // 2. Check User ID Ban
+          const banInfo = this.banManager.isIdBanned(basicUserInfo.id);
+          if (banInfo) {
+            const timeLeft = this.banManager.getRemainingTimeStr(banInfo.expiresAt);
+            const admin = banInfo.adminName || '未知';
+            this.logger.ban(`拦截到封禁用户 ${basicUserInfo.id} (${basicUserInfo.name}) 的登录尝试。原因: ${banInfo.reason} (操作员: ${admin}, 剩余时长: ${timeLeft})`, { userId: basicUserInfo.id });
+            this.respond(connectionId, sendResponse, {
+              type: ServerCommandType.Authenticate,
+              result: { ok: false, error: `您的账号已被封禁。\n原因: ${banInfo.reason}\n操作员: ${admin}\n剩余时长: ${timeLeft}` },
             });
             const closer = this.connectionClosers.get(connectionId);
             if (closer) closer();

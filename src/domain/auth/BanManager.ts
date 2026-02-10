@@ -20,10 +20,17 @@ export class BanManager {
   private ipBans: Map<string, BanInfo> = new Map();
   private readonly idBanFile = path.join(process.cwd(), 'data', 'banidList.json');
   private readonly ipBanFile = path.join(process.cwd(), 'data', 'banipList.json');
+  private idWhitelist: number[] = [];
+  private ipWhitelist: string[] = [];
 
   constructor(private readonly logger: Logger) {
     this.ensureDataDir();
     this.loadBans();
+  }
+
+  public setWhitelists(ids: number[], ips: string[]) {
+    this.idWhitelist = ids;
+    this.ipWhitelist = ips;
   }
 
   private ensureDataDir() {
@@ -90,35 +97,59 @@ export class BanManager {
   }
 
   public banId(userId: number, durationSeconds: number | null, reason: string, adminName?: string) {
+    if (this.idWhitelist.includes(userId)) {
+      this.logger.warn(`尝试封禁白名单用户 ID ${userId}，已拦截。`);
+      return;
+    }
     const expiresAt = durationSeconds ? Date.now() + durationSeconds * 1000 : null;
     this.idBans.set(userId, { target: userId, reason, createdAt: Date.now(), expiresAt, adminName });
     this.saveBans();
-    this.logger.mark(`用户 ID ${userId} 已被封禁。时长: ${durationSeconds ?? '永久'}, 原因: ${reason}`);
+    this.logger.ban(`用户 ID ${userId} 已被 ${adminName || '未知'} 封禁。时长: ${durationSeconds ?? '永久'}, 原因: ${reason}`);
   }
 
   public banIp(ip: string, durationSeconds: number | null, reason: string, adminName?: string) {
+    if (this.ipWhitelist.includes(ip)) {
+        this.logger.warn(`尝试封禁白名单 IP ${ip}，已拦截。`);
+        return;
+    }
     const expiresAt = durationSeconds ? Date.now() + durationSeconds * 1000 : null;
     this.ipBans.set(ip, { target: ip, reason, createdAt: Date.now(), expiresAt, adminName });
     this.saveBans();
-    this.logger.mark(`IP ${ip} 已被封禁。时长: ${durationSeconds ?? '永久'}, 原因: ${reason}`);
+    this.logger.ban(`IP ${ip} 已被 ${adminName || '未知'} 封禁。时长: ${durationSeconds ?? '永久'}, 原因: ${reason}`);
   }
 
-  public unbanId(userId: number) {
+  public unbanId(userId: number, adminName: string = 'System') {
     if (this.idBans.delete(userId)) {
       this.saveBans();
-      this.logger.info(`用户 ID ${userId} 已解封。`);
+      this.logger.ban(`用户 ID ${userId} 已被 ${adminName} 解封。`);
       return true;
     }
     return false;
   }
 
-  public unbanIp(ip: string) {
+  public unbanIp(ip: string, adminName: string = 'System') {
     if (this.ipBans.delete(ip)) {
       this.saveBans();
-      this.logger.info(`IP ${ip} 已解封。`);
+      this.logger.ban(`IP ${ip} 已被 ${adminName} 解封。`);
       return true;
     }
     return false;
+  }
+
+  public getRemainingTimeStr(expiresAt: number | null): string {
+    if (expiresAt === null) return '永久';
+    const remainingMs = expiresAt - Date.now();
+    if (remainingMs <= 0) return '已过期';
+    
+    const seconds = Math.floor(remainingMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) return `${days}天 ${hours % 24}小时`;
+    if (hours > 0) return `${hours}小时 ${minutes % 60}分钟`;
+    if (minutes > 0) return `${minutes}分钟 ${seconds % 60}秒`;
+    return `${seconds}秒`;
   }
 
   public isIdBanned(userId: number): BanInfo | null {
