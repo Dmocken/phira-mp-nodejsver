@@ -26,6 +26,7 @@ export class HttpServer {
   private readonly blacklistedIps = new Set<string>();
   private sessionParser: express.RequestHandler;
   private readonly blacklistFile = path.join(process.cwd(), 'data', 'login_blacklist.log');
+  private readonly cleanupInterval: NodeJS.Timeout;
   
   constructor(
     private readonly config: ServerConfig,
@@ -58,7 +59,7 @@ export class HttpServer {
     this.loadBlacklist();
     
     // Cleanup expired login attempts every hour to prevent memory leak
-    setInterval(() => {
+    this.cleanupInterval = setInterval(() => {
         const now = Date.now();
         for (const [ip, attempt] of this.loginAttempts.entries()) {
             if (now - attempt.lastAttempt > 15 * 60 * 1000) { // 15 minutes expiration
@@ -659,6 +660,7 @@ export class HttpServer {
   }
 
   public stop(): Promise<void> {
+    clearInterval(this.cleanupInterval);
     return new Promise((resolve) => {
       this.server.close(() => {
         this.logger.info('HTTP 服务器已停止');
