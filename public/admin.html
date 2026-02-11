@@ -132,6 +132,10 @@
         <div class="admin-footer">
             <a href="/" class="back-link" data-i18n="common.back_home">&larr; Back to Home</a>
             
+            <div style="margin-top: 10px; font-family: monospace; font-size: 0.8rem; opacity: 0.8;">
+                <span data-i18n="common.server_ip">Server IP:</span> <span id="server-ip">...</span>
+            </div>
+
             <div class="footer-controls" style="margin-top: 0;">
                 <button id="theme-toggle" class="theme-toggle-btn" style="padding: 8px 16px; font-size: 0.8rem;">
                     <span id="theme-icon" class="theme-icon">🌙</span>
@@ -159,6 +163,9 @@
         // Listen for i18n to be ready to set initial theme text
         document.addEventListener('i18nReady', () => {
             updateThemeUI(document.body.classList.contains('dark-mode'));
+            if (window.SERVER_CONFIG && window.SERVER_CONFIG.displayIp) {
+                document.getElementById('server-ip').textContent = window.SERVER_CONFIG.displayIp;
+            }
         });
 
         themeToggle.addEventListener('click', () => {

@@ -276,8 +276,11 @@
             </section>
         </div>
 
-        <footer style="margin-top: 40px; padding: 20px 0;">
+        <footer style="margin-top: 40px; padding: 20px 0; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color);">
             <div data-i18n="admin.footer_version">FunXLink Studio Phira Management Panel v1.0</div>
+            <div style="font-family: monospace; font-size: 0.85rem; opacity: 0.8;">
+                <span data-i18n="common.server_ip">Server IP:</span> <span id="server-ip">...</span>
+            </div>
         </footer>
     </div>
 
@@ -605,6 +608,10 @@
 
             const isDark = document.body.classList.contains('dark-mode');
             document.getElementById('theme-icon').textContent = isDark ? '☀️' : '🌙';
+
+            if (window.SERVER_CONFIG && window.SERVER_CONFIG.displayIp) {
+                document.getElementById('server-ip').textContent = window.SERVER_CONFIG.displayIp;
+            }
         });
     </script>
 </body>
