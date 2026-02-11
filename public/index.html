@@ -28,12 +28,17 @@
                 <code id="server-ip">...</code>
                 <span class="copy-icon">&#128203;</span>
             </div>
-            <script>
-                if (window.SERVER_CONFIG && window.SERVER_CONFIG.displayIp) {
-                    document.getElementById('server-ip').textContent = window.SERVER_CONFIG.displayIp;
-                }
-            </script>
-            <div class="footer-controls">
+                <script>
+                    // Update server IP and title from config if available
+                    if (window.SERVER_CONFIG) {
+                        if (window.SERVER_CONFIG.displayIp) {
+                            document.getElementById('server-ip').textContent = window.SERVER_CONFIG.displayIp;
+                        }
+                        if (window.SERVER_CONFIG.serverName) {
+                            document.title = `${window.SERVER_CONFIG.serverName} - Room List`;
+                        }
+                    }
+                </script>            <div class="footer-controls">
                 <button id="theme-toggle" class="theme-toggle-btn">
                     <span id="theme-icon" class="theme-icon">🌙</span>
                     <span id="theme-text" data-i18n="common.dark_mode">Dark Mode</span>

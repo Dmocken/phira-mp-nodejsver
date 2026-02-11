@@ -794,7 +794,8 @@ export class HttpServer {
               captchaProvider: ${JSON.stringify(this.config.captchaProvider)},
               geetestId: ${JSON.stringify(this.config.geetestId)},
               displayIp: ${JSON.stringify(this.config.displayIp)},
-              defaultAvatar: ${JSON.stringify(this.config.defaultAvatar)}
+              defaultAvatar: ${JSON.stringify(this.config.defaultAvatar)},
+              serverName: ${JSON.stringify(this.config.serverName)}
           };
         </script>`;
         html = html.replace('</head>', `${configScript}</head>`);
