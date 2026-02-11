@@ -306,9 +306,8 @@ export class HttpServer {
     });
 
     const publicPath = path.join(__dirname, '../../public');
-    this.app.use(express.static(publicPath));
-    this.logger.info(`正在从 ${publicPath} 提供静态文件`);
-
+    
+    // Custom HTML routes WITH config injection (MUST be before express.static)
     this.app.get('/admin', (_req, res) => {
       if ((_req.session as AdminSession).isAdmin) {
         return res.redirect('/');
@@ -331,6 +330,9 @@ export class HttpServer {
     this.app.get('/panel', this.adminAuth.bind(this), (_req, res) => {
         this.serveHtmlWithConfig(res, path.join(publicPath, 'panel.html'));
     });
+
+    this.app.use(express.static(publicPath));
+    this.logger.info(`正在从 ${publicPath} 提供静态文件`);
 
     this.app.post('/login', async (req, res) => {
       const { username, password } = req.body;
