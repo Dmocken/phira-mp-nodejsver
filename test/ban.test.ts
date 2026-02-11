@@ -17,6 +17,7 @@ describe('封禁管理器 (BanManager)', () => {
       mark: jest.fn(),
       warn: jest.fn(),
       error: jest.fn(),
+      ban: jest.fn(),
       setSilentIds: jest.fn(),
     } as any;
 

@@ -28,6 +28,8 @@ describe('协议处理器 (ProtocolHandler)', () => {
     
     mockBanManager = {
       isIdBanned: jest.fn().mockReturnValue(null),
+      isIpBanned: jest.fn().mockReturnValue(null),
+      getRemainingTimeStr: jest.fn().mockReturnValue('1h'),
     } as any;
 
     mockLogger = {
@@ -36,6 +38,7 @@ describe('协议处理器 (ProtocolHandler)', () => {
       warn: jest.fn(),
       error: jest.fn(),
       mark: jest.fn(),
+      ban: jest.fn(),
     } as any;
 
     handler = new ProtocolHandler(
@@ -45,7 +48,9 @@ describe('协议处理器 (ProtocolHandler)', () => {
       'TestServer',
       'https://api.test',
       undefined,
-      mockBanManager
+      mockBanManager,
+      'Welcome',
+      'https://avatar.test'
     );
   });
 
