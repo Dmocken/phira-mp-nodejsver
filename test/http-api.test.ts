@@ -81,6 +81,35 @@ describe('HTTP API 测试 (HttpServer)', () => {
     expect(response.body.rooms[0].state.chartName).toBe('Test Chart');
   });
 
+  test('HTML 页面应当注入正确的配置变量', async () => {
+    // 覆盖默认配置以进行测试
+    const customConfig = createServerConfig({
+        displayIp: 'custom.ip:12345',
+        defaultAvatar: 'https://custom.avatar/url.png'
+    });
+    
+    const testServer = new HttpServer(
+        customConfig,
+        mockLogger,
+        mockRoomManager,
+        mockProtocolHandler,
+        mockBanManager
+    );
+
+    const pages = ['/', '/room', '/players', '/admin'];
+    
+    for (const page of pages) {
+        const response = await request(testServer.getInternalServer()).get(page);
+        expect(response.status).toBe(200);
+        expect(response.text).toContain('window.SERVER_CONFIG = {');
+        // 使用正则忽略空格，并处理属性名可能有也可能没有引号的情况
+        expect(response.text).toMatch(/"?displayIp"?:\s*"custom\.ip:12345"/);
+        expect(response.text).toMatch(/"?defaultAvatar"?:\s*"https:\/\/custom\.avatar\/url\.png"/);
+    }
+
+    await testServer.stop();
+  });
+
   test('管理接口在未授权时应当返回 403', async () => {
     const response = await request(httpServer.getInternalServer()).get('/api/all-players');
     expect(response.status).toBe(403);

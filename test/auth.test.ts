@@ -50,6 +50,23 @@ describe('认证服务 (PhiraAuthService)', () => {
     );
   });
 
+  test('当用户无头像时应当使用默认头像', async () => {
+    const customDefault = 'https://custom.default/avatar.png';
+    const serviceWithDefault = new PhiraAuthService('https://api.test', mockLogger, customDefault);
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        id: 200,
+        name: '无头像用户'
+        // 没有 avatar 字段
+      }),
+    });
+
+    const user = await serviceWithDefault.authenticate('token');
+    expect(user.avatar).toBe(customDefault);
+  });
+
   test('认证失败时应当抛出错误 (401)', async () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: false,

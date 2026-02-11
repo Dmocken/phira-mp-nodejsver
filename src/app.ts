@@ -14,7 +14,17 @@ import { HttpServer } from './network/HttpServer';
 import { WebSocketServer } from './network/WebSocketServer';
 import { version } from '../package.json';
 
-const checkForUpdates = async (logger: Logger) => {
+export interface Application {
+  readonly config: ServerConfig;
+  readonly logger: Logger;
+  readonly roomManager: RoomManager;
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  getTcpServer(): NetworkServer;
+  getHttpServer(): HttpServer | undefined;
+}
+
+export const checkForUpdates = async (logger: Logger) => {
   try {
     const response = await fetch('https://api.github.com/repos/chuzouX/phira-mp-nodejsver/releases/latest', {
       headers: { 'User-Agent': 'PhiraServer-UpdateCheck' }
