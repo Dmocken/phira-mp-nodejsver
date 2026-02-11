@@ -121,6 +121,31 @@ npm install
 npm start
 ```
 
+### Nginx 反向代理配置
+
+如果您使用 Nginx 反向代理管理后台和 WebSocket，请参考以下配置：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8080; # 替换为您的 WEB_PORT
+    
+    proxy_set_header Host $proxy_host;
+    proxy_set_header Origin $scheme://$host;
+    
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    
+    # 获取真实 IP 的关键配置
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+}
+```
+
 ## Web API
 
 ### 鉴权方式

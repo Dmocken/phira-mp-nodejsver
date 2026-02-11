@@ -115,6 +115,24 @@ export class HttpServer {
     if (changed) this.saveBlacklist();
   }
 
+  private getRealIp(req: express.Request): string {
+    // Priority: HTTP Headers (Standard for Web Proxies)
+    const xForwardedFor = req.headers['x-forwarded-for'];
+    if (xForwardedFor) {
+      const ips = typeof xForwardedFor === 'string' ? xForwardedFor.split(',') : (Array.isArray(xForwardedFor) ? xForwardedFor : []);
+      if (ips.length > 0) {
+        return ips[0].trim();
+      }
+    }
+    const xRealIp = req.headers['x-real-ip'];
+    if (xRealIp && typeof xRealIp === 'string') {
+      return xRealIp.trim();
+    }
+
+    // Fallback: Express req.ip (if trust proxy is on) or socket remoteAddress
+    return req.ip || req.socket.remoteAddress || 'unknown';
+  }
+
   private isBlacklisted(ip: string): boolean {
     const expiresAt = this.blacklistedIps.get(ip);
     if (!expiresAt) return false;
@@ -277,7 +295,7 @@ export class HttpServer {
   private setupRoutes(): void {
     // Global IP Ban Check
     this.app.use((req, res, next) => {
-        const ip = req.ip || req.socket.remoteAddress || 'unknown';
+        const ip = this.getRealIp(req);
         const banInfo = this.banManager.isIpBanned(ip);
         if (banInfo) {
             this.logger.warn(`拦截到封禁 IP ${ip} 的 Web 访问。原因: ${banInfo.reason}`);
@@ -321,7 +339,7 @@ export class HttpServer {
 
     this.app.post('/login', async (req, res) => {
       const { username, password } = req.body;
-      const ip = req.ip || req.socket.remoteAddress || 'unknown';
+      const ip = this.getRealIp(req);
 
       if (this.isBlacklisted(ip)) {
           const timeLeft = this.getRemainingBlacklistTimeStr(ip);
