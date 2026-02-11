@@ -16,7 +16,7 @@ import { version } from '../package.json';
 
 const checkForUpdates = async (logger: Logger) => {
   try {
-    const response = await fetch('https://api.github.com/repos/Pimeng/phira-mp-nodejsver/releases/latest', {
+    const response = await fetch('https://api.github.com/repos/chuzouX/phira-mp-nodejsver/releases/latest', {
       headers: { 'User-Agent': 'PhiraServer-UpdateCheck' }
     });
     
@@ -28,7 +28,7 @@ const checkForUpdates = async (logger: Logger) => {
     if (latestVersion && latestVersion !== version) {
       logger.mark('\n' + '='.repeat(50));
       logger.mark(`🔔 发现新版本: v${latestVersion} (当前版本: v${version})`);
-      logger.mark(`🔗 下载地址: https://github.com/Pimeng/phira-mp-nodejsver/releases/latest`);
+      logger.mark(`🔗 下载地址: https://github.com/chuzouX/phira-mp-nodejsver/releases/latest`);
       logger.mark('='.repeat(50) + '\n');
     }
   } catch (error) {
