@@ -308,26 +308,26 @@ export class HttpServer {
     const publicPath = path.join(__dirname, '../../public');
     
     // Custom HTML routes WITH config injection (MUST be before express.static)
-    this.app.get('/admin', (_req, res) => {
+    this.app.get(['/admin', '/admin.html'], (_req, res) => {
       if ((_req.session as AdminSession).isAdmin) {
         return res.redirect('/');
       }
       this.serveHtmlWithConfig(res, path.join(publicPath, 'admin.html'));
     });
 
-    this.app.get('/', (_req, res) => {
+    this.app.get(['/', '/index.html'], (_req, res) => {
         this.serveHtmlWithConfig(res, path.join(publicPath, 'index.html'));
     });
 
-    this.app.get('/room', (_req, res) => {
+    this.app.get(['/room', '/room.html'], (_req, res) => {
         this.serveHtmlWithConfig(res, path.join(publicPath, 'room.html'));
     });
 
-    this.app.get('/players', (_req, res) => {
+    this.app.get(['/players', '/players.html'], (_req, res) => {
         this.serveHtmlWithConfig(res, path.join(publicPath, 'players.html'));
     });
 
-    this.app.get('/panel', this.adminAuth.bind(this), (_req, res) => {
+    this.app.get(['/panel', '/panel.html'], this.adminAuth.bind(this), (_req, res) => {
         this.serveHtmlWithConfig(res, path.join(publicPath, 'panel.html'));
     });
 
